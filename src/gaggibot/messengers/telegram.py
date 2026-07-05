@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator
 
@@ -39,8 +40,19 @@ class TelegramMessenger(Messenger):
         await self._queue.put(TextReply(update.message.text))
 
     async def start(self) -> None:
+        from telegram import BotCommand
+
         await self.app.initialize()
         await self.app.start()
+        with contextlib.suppress(Exception):  # menu is cosmetic
+            await self.app.bot.set_my_commands([
+                BotCommand("wake", "turn the machine on, ping when hot"),
+                BotCommand("sleep", "machine to standby"),
+                BotCommand("status", "mode, temperature, connectivity"),
+                BotCommand("last", "last logged shot"),
+                BotCommand("fix", "redo the last shot's log"),
+                BotCommand("help", "list commands"),
+            ])
         await self.app.updater.start_polling(drop_pending_updates=True)
         log.info("telegram messenger polling as chat %s", self.chat_id)
 

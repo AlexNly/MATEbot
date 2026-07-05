@@ -91,6 +91,19 @@ services.gaggibot = {
    reliable than `gaggimate.local`.
 3. Pull a shot.
 
+## Chat commands
+
+Besides the post-shot questionnaire, the bot answers commands (any messenger):
+
+```
+/wake     turn the machine on — pings you when it's at temperature
+/sleep    back to standby
+/status   mode, boiler temperature, water level
+/last     the last logged shot (with journal link if configured)
+/fix      redo the questionnaire for the last shot
+/help     list commands
+```
+
 ## Configuration
 
 Environment variables, or the same keys in `~/.config/gaggibot/config.toml`:
@@ -103,6 +116,7 @@ Environment variables, or the same keys in `~/.config/gaggibot/config.toml`:
 | `DISCORD_BOT_TOKEN` / `DISCORD_CHANNEL_ID` | — | Discord credentials |
 | `GAGGIBOT_DATA_REPO` | — | Path to a git clone; enables archive + journal |
 | `GAGGIBOT_SITE_TITLE` | `Shot Journal` | Title of the generated journal |
+| `GAGGIBOT_JOURNAL_URL` | — | Public journal URL, used for `/last` deep links |
 | `GAGGIBOT_STATE_DIR` | `~/.local/state/gaggibot` | Bot state (defaults, resume) |
 | `GAGGIBOT_MIN_SHOT_S` | `10` | Ignore shots shorter than this |
 | `GAGGIBOT_IGNORE_PROFILES` | `(?i)backflush\|descale\|flush\|clean` | Profile regex to skip |

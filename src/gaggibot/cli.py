@@ -82,8 +82,10 @@ async def _sync(config: Config) -> int:
 
 
 async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
+    from .commands import CommandRouter, make_frame_cache
     from .conversation import Conversation
     from .machine import GaggiMateClient
+    from .messengers.base import TextReply
     from .state import State
     from .sync import sync_soon
     from .watcher import ShotWatcher, replay_frames
@@ -132,6 +134,8 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
             return False
 
         convo = Conversation(messenger, state, save_notes)
+        cache_frame, latest_frame = make_frame_cache()
+        router = CommandRouter(client, state, convo, messenger, config, latest_frame)
         await messenger.start()
         try:
             await convo.resume_if_pending()
@@ -139,12 +143,21 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
             async def pump_events():
                 async for event in messenger.events():
                     try:
+                        if isinstance(event, TextReply) and event.text.strip().startswith("/"):
+                            if await router.handle(event.text):
+                                continue
                         await convo.handle_event(event)
                     except Exception:  # noqa: BLE001 - a flaky send must not kill the bot
                         log.exception("event handling failed")
 
             async def pump_shots():
-                frames = (
+                async def tee(source):
+                    async for frame in source:
+                        cache_frame(frame)
+                        await router.on_frame(frame)
+                        yield frame
+
+                frames = tee(
                     replay_frames(replay) if replay else client.status_stream()
                 )
                 watcher = ShotWatcher(
@@ -154,7 +167,15 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
                     last_known_id=state.get("last_shot_id", -1),
                 )
                 async for shot in watcher.shots(frames):
-                    state.set("last_shot_id", shot.entry.id)
+                    state.update(
+                        last_shot_id=shot.entry.id,
+                        last_shot={
+                            "shot_id": shot.entry.id,
+                            "profile": shot.profile_label or shot.entry.profile_name,
+                            "duration_ms": shot.duration_ms,
+                            "volume_g": shot.entry.volume_g,
+                        },
+                    )
                     try:
                         await convo.start_shot(
                             shot.entry.id,

@@ -25,6 +25,7 @@ ENV_MAP = {
     "ignore_profiles": "GAGGIBOT_IGNORE_PROFILES",
     "sync_enabled": "GAGGIBOT_SYNC",
     "site_title": "GAGGIBOT_SITE_TITLE",
+    "journal_url": "GAGGIBOT_JOURNAL_URL",
 }
 
 
@@ -47,6 +48,7 @@ class Config:
     ignore_profiles: str = r"(?i)backflush|descale|flush|clean"
     sync_enabled: bool = False
     site_title: str = "Shot Journal"
+    journal_url: str = ""  # public journal base URL, used for /last deep links
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:
