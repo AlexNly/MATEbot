@@ -54,18 +54,29 @@ class TelegramMessenger(Messenger):
             return None
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-        # ratings in one row, everything else stacked
+        buttons = [InlineKeyboardButton(o.label, callback_data=o.id) for o in options]
+        # ratings in rows of three (a single row of five truncates on phones),
+        # everything else stacked
         if all(o.id.split("|")[2] == "r" for o in options):
-            rows = [[InlineKeyboardButton(o.label, callback_data=o.id) for o in options]]
+            rows = [buttons[i : i + 3] for i in range(0, len(buttons), 3)]
         else:
-            rows = [[InlineKeyboardButton(o.label, callback_data=o.id)] for o in options]
+            rows = [[b] for b in buttons]
         return InlineKeyboardMarkup(rows)
 
     async def send(self, text: str, options: list[Option] | None = None) -> str:
-        msg = await self.app.bot.send_message(
-            self.chat_id, text, reply_markup=self._keyboard(options)
-        )
-        return str(msg.message_id)
+        # telegram API connectivity can flap; a lost send must not crash the bot
+        last_exc = None
+        for attempt in range(5):
+            try:
+                msg = await self.app.bot.send_message(
+                    self.chat_id, text, reply_markup=self._keyboard(options)
+                )
+                return str(msg.message_id)
+            except Exception as exc:  # noqa: BLE001 - NetworkError et al.
+                last_exc = exc
+                log.warning("send attempt %d failed: %s", attempt + 1, exc)
+                await asyncio.sleep(2 * (attempt + 1))
+        raise last_exc
 
     async def edit(self, ref: str, text: str, options: list[Option] | None = None) -> None:
         try:

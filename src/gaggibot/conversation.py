@@ -119,7 +119,8 @@ class Conversation:
     async def resume_if_pending(self) -> None:
         if self.pending is not None:
             await self.messenger.send(
-                f"☕ (resuming) Shot #{self.pending.shot_id} still needs its log:"
+                f"☕ Shot #{self.pending.shot_id} is still waiting for its log — "
+                "where were we?"
             )
             await self._prompt()
 

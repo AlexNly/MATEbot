@@ -110,11 +110,21 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
 
             messenger = create_messenger(config)
 
+        def schedule_sync():
+            if config.sync_enabled and config.data_repo:
+                asyncio.create_task(
+                    sync_soon(
+                        client, config.data_repo, messenger.send,
+                        site_title=config.site_title,
+                    )
+                )
+
         async def save_notes(shot_id: int, notes: dict) -> bool:
             for attempt in range(3):
                 try:
                     resp = await client.notes_save(shot_id, notes)
                     log.info("notes saved for %06d: %s", shot_id, resp.get("msg", "?"))
+                    schedule_sync()  # push notes + regenerated journal
                     return True
                 except Exception as exc:  # noqa: BLE001
                     log.warning("notes save attempt %d failed: %s", attempt + 1, exc)
@@ -128,7 +138,10 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
 
             async def pump_events():
                 async for event in messenger.events():
-                    await convo.handle_event(event)
+                    try:
+                        await convo.handle_event(event)
+                    except Exception:  # noqa: BLE001 - a flaky send must not kill the bot
+                        log.exception("event handling failed")
 
             async def pump_shots():
                 frames = (
@@ -142,19 +155,16 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
                 )
                 async for shot in watcher.shots(frames):
                     state.set("last_shot_id", shot.entry.id)
-                    await convo.start_shot(
-                        shot.entry.id,
-                        shot.profile_label or shot.entry.profile_name,
-                        shot.duration_ms,
-                        shot.entry.volume_g,
-                    )
-                    if config.sync_enabled and config.data_repo:
-                        asyncio.create_task(
-                            sync_soon(
-                                client, config.data_repo, messenger.send,
-                                site_title=config.site_title,
-                            )
+                    try:
+                        await convo.start_shot(
+                            shot.entry.id,
+                            shot.profile_label or shot.entry.profile_name,
+                            shot.duration_ms,
+                            shot.entry.volume_g,
                         )
+                    except Exception:  # noqa: BLE001 - keep watching even if messaging fails
+                        log.exception("questionnaire start failed (state kept for resume)")
+                    schedule_sync()  # archive the .slog right away
 
             tasks = [asyncio.create_task(pump_events()), asyncio.create_task(pump_shots())]
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
