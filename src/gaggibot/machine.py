@@ -10,9 +10,11 @@ Connection notes (learned from firmware source, do not "simplify" away):
   gzipped SPA ``index.html`` (catch-all route) — every download must be
   content-validated, never trusted by status code.
 * ``req:history:notes:save`` id semantics: the request-level ``id`` is used
-  verbatim as the filename (must be the 6-digit padded id), while the ``id``
-  inside the notes payload is unpadded. ``rating`` is a number; all other
-  note values must be strings or the firmware silently ignores them.
+  verbatim as the notes filename. Which name the web UI *reads back* differs
+  by firmware build (older builds use the 6-digit padded id, current nightlies
+  the unpadded one), so notes are saved under BOTH names. ``rating`` is a
+  number; all other note values must be strings or the firmware silently
+  ignores them.
 """
 
 from __future__ import annotations
@@ -130,9 +132,16 @@ class GaggiMateClient:
             if value is None:
                 continue
             payload[key] = value if key == "rating" else str(value)
-        return await self.request(
-            "req:history:notes:save", id=f"{shot_id:06d}", notes=payload
+        # unpadded first (what current nightlies read), padded as a fallback
+        # for older builds — the double index update is idempotent
+        resp = await self.request(
+            "req:history:notes:save", id=str(shot_id), notes=payload
         )
+        with contextlib.suppress(Exception):
+            await self.request(
+                "req:history:notes:save", id=f"{shot_id:06d}", notes=payload
+            )
+        return resp
 
     async def profiles_list(self) -> list[dict]:
         resp = await self.request("req:profiles:list", timeout=30.0)
