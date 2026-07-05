@@ -27,6 +27,7 @@ ENV_MAP = {
     "site_title": "GAGGIBOT_SITE_TITLE",
     "journal_url": "GAGGIBOT_JOURNAL_URL",
     "hints_enabled": "GAGGIBOT_HINTS",
+    "digest_enabled": "GAGGIBOT_DIGEST",
 }
 
 
@@ -51,6 +52,7 @@ class Config:
     site_title: str = "Shot Journal"
     journal_url: str = ""  # public journal base URL, used for /last deep links
     hints_enabled: bool = True  # dial-in suggestions after sour/bitter/low-rated shots
+    digest_enabled: bool = True  # weekly summary on Sunday evening
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:
@@ -68,7 +70,7 @@ class Config:
                 continue
             if f.name == "min_shot_s":
                 value = float(value)
-            elif f.name in ("sync_enabled", "hints_enabled"):
+            elif f.name in ("sync_enabled", "hints_enabled", "digest_enabled"):
                 value = str(value).lower() in ("1", "true", "yes", "on")
             kwargs[f.name] = value
         config = cls(**kwargs)
