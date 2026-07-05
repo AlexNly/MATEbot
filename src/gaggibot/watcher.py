@@ -40,11 +40,13 @@ class ShotWatcher:
         min_duration_s: float = 10.0,
         ignore_profiles: str = r"(?i)backflush|descale|flush|clean",
         last_known_id: int = -1,
+        on_utility=None,
     ) -> None:
         self.client = client
         self.min_duration_ms = min_duration_s * 1000
         self.ignore_re = re.compile(ignore_profiles) if ignore_profiles else None
         self.last_known_id = last_known_id
+        self.on_utility = on_utility  # async callback(profile) for ignored utility runs
 
     def _frame_is_shot_end(self, prev: dict | None, frame: dict) -> bool:
         if prev is None:
@@ -107,6 +109,13 @@ class ShotWatcher:
                 profile = prev.get("p", "")
                 duration = (prev.get("process") or {}).get("e", 0)
                 log.info("shot ended: profile=%r duration=%.1fs", profile, duration / 1000)
+                is_utility = (
+                    duration >= self.min_duration_ms
+                    and self.ignore_re
+                    and self.ignore_re.search(profile or "")
+                )
+                if is_utility and self.on_utility:
+                    await self.on_utility(profile)
                 if self._accept(profile, duration):
                     entry = await self._resolve_new_entry()
                     if entry is None:

@@ -93,6 +93,9 @@ class CommandRouter:
             line += f" → target {tt:.0f}°C"
         if frame.get("wl") is not None:
             line += f" · water {frame['wl']}%"
+        since_clean = self.state.get("shots_since_clean", 0)
+        if since_clean:
+            line += f"\n🧽 {since_clean} shots since the last backflush"
         await self.messenger.send(line)
 
     async def _cmd_last(self) -> None:

@@ -170,11 +170,19 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
                         log.exception("event handling failed")
 
             async def pump_shots():
+                import re as _re
+
                 async def tee(source):
                     async for frame in source:
                         cache_frame(frame)
                         await router.on_frame(frame)
                         yield frame
+
+                async def on_utility(profile):
+                    # only actual cleaning runs reset the counter, not water flushes
+                    if _re.search(r"(?i)backflush|descale|clean", profile or ""):
+                        state.set("shots_since_clean", 0)
+                        log.info("cleaning run detected (%s); counter reset", profile)
 
                 frames = tee(
                     replay_frames(replay) if replay else client.status_stream()
@@ -184,8 +192,19 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
                     min_duration_s=config.min_shot_s,
                     ignore_profiles=config.ignore_profiles,
                     last_known_id=state.get("last_shot_id", -1),
+                    on_utility=on_utility,
                 )
                 async for shot in watcher.shots(frames):
+                    since_clean = state.get("shots_since_clean", 0) + 1
+                    state.set("shots_since_clean", since_clean)
+                    if config.clean_every and since_clean % config.clean_every == 0:
+                        try:
+                            await messenger.send(
+                                f"🧽 {since_clean} espresso shots since the last backflush — "
+                                "the group head would appreciate a round with the blind basket."
+                            )
+                        except Exception:  # noqa: BLE001
+                            log.exception("cleaning reminder failed")
                     state.update(
                         last_shot_id=shot.entry.id,
                         last_shot={
