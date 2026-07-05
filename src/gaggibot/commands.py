@@ -24,6 +24,8 @@ HELP = (
     "/status — mode, temperature, connectivity\n"
     "/last — the last logged shot\n"
     "/fix — redo the questionnaire for the last shot\n"
+    "/newbag <grams> [name] — start tracking a bean bag (optional feature)\n"
+    "/bag — how much is left in the bag\n"
     "/help — this list"
 )
 
@@ -37,12 +39,15 @@ class CommandRouter:
         self.config = config
         self.latest_frame = latest_frame  # () -> (frame dict | None, age seconds)
         self._awaiting_ready = False
+        self._args: list[str] = []
 
     # ------------------------------------------------------------- dispatch
 
     async def handle(self, text: str) -> bool:
         """Handle a command; returns True when the text was consumed."""
-        cmd = text.strip().split()[0].lower().lstrip("/").split("@")[0]
+        parts = text.strip().split()
+        cmd = parts[0].lower().lstrip("/").split("@")[0]
+        self._args = parts[1:]
         handler = getattr(self, f"_cmd_{cmd}", None)
         if handler is None:
             if cmd == "start":
@@ -116,6 +121,30 @@ class CommandRouter:
             last["shot_id"], last.get("profile", ""),
             last.get("duration_ms", 0), last.get("volume_g", 0.0),
         )
+
+    async def _cmd_newbag(self) -> None:
+        from . import bags
+
+        usage = "Usage: /newbag <grams> [name] — e.g. /newbag 250 Mondo Classico"
+        if not self._args:
+            await self.messenger.send(usage)
+            return
+        try:
+            grams = float(self._args[0].replace("g", ""))
+        except ValueError:
+            await self.messenger.send(usage)
+            return
+        name = (
+            " ".join(self._args[1:])
+            or self.state.get("last_notes", {}).get("beanType")
+            or "Unnamed beans"
+        )
+        await self.messenger.send(bags.open_bag(self.state, grams, name))
+
+    async def _cmd_bag(self) -> None:
+        from . import bags
+
+        await self.messenger.send(bags.bag_status(self.state))
 
     # ------------------------------------------------------------- frames
 

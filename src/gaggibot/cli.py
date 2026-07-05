@@ -122,6 +122,7 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
                 )
 
         async def save_notes(shot_id: int, notes: dict) -> bool:
+            from .bags import track_shot
             from .hints import make_hint
 
             for attempt in range(3):
@@ -133,6 +134,9 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
                         hint = make_hint(notes)
                         if hint:
                             await messenger.send(hint)
+                    bag_msg = track_shot(state, notes)  # no-op unless a bag is registered
+                    if bag_msg:
+                        await messenger.send(bag_msg)
                     return True
                 except Exception as exc:  # noqa: BLE001
                     log.warning("notes save attempt %d failed: %s", attempt + 1, exc)
