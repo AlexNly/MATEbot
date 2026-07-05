@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gaggibot"
+version = "0.1.0"
+description = "The proactive companion for GaggiMate espresso machines: post-shot logging bot, .slog decoder, shot-journal site generator"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Alexander Nicolay" }]
+keywords = ["gaggimate", "espresso", "coffee", "telegram", "discord", "homelab"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Home Automation",
+]
+dependencies = ["aiohttp>=3.9"]
+
+[project.optional-dependencies]
+telegram = ["python-telegram-bot>=21,<23"]
+discord = ["discord.py>=2.3"]
+matrix = ["matrix-nio>=0.24"]
+all = ["gaggibot[telegram,discord,matrix]"]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.4"]
+
+[project.urls]
+Homepage = "https://github.com/AlexNly/gaggibot"
+Issues = "https://github.com/AlexNly/gaggibot/issues"
+
+[project.scripts]
+gaggibot = "gaggibot.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gaggibot"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
