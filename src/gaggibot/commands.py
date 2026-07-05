@@ -26,6 +26,7 @@ HELP = (
     "/fix — redo the questionnaire for the last shot\n"
     "/newbag <grams> [name] — start tracking a bean bag (optional feature)\n"
     "/bag — how much is left in the bag\n"
+    "/digest — your last 7 days in espresso\n"
     "/help — this list"
 )
 
@@ -146,6 +147,10 @@ class CommandRouter:
 
         await self.messenger.send(bags.bag_status(self.state))
 
+    async def _cmd_digest(self) -> None:
+        text = await build_digest(self.client, self.config)
+        await self.messenger.send(text or "No shots in the last 7 days. The machine misses you.")
+
     # ------------------------------------------------------------- frames
 
     async def on_frame(self, frame: dict[str, Any]) -> None:
@@ -156,6 +161,25 @@ class CommandRouter:
         if frame.get("m") == 1 and tt >= 60 and ct >= tt - 1.0:
             self._awaiting_ready = False
             await self.messenger.send(f"☕ {ct:.1f}°C — the machine is ready when you are.")
+
+
+async def build_digest(client, config) -> str | None:
+    """Digest from the machine index, falling back to the local journal data."""
+    from datetime import datetime
+    from pathlib import Path
+
+    from . import digest
+
+    rows = None
+    try:
+        rows = digest.rows_from_index(await client.fetch_index())
+    except Exception:  # noqa: BLE001 - machine may be off
+        site_index = Path(config.data_repo or "") / "docs" / "index.json"
+        if config.data_repo and site_index.exists():
+            rows = digest.rows_from_site_index(site_index)
+    if rows is None:
+        return None
+    return digest.compute(rows, now=datetime.now(), journal_url=config.journal_url)
 
 
 def make_frame_cache():

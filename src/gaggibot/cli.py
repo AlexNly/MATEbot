@@ -206,7 +206,28 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
                         log.exception("questionnaire start failed (state kept for resume)")
                     schedule_sync()  # archive the .slog right away
 
+            async def weekly_digest():
+                from datetime import datetime
+
+                from .commands import build_digest
+                from .digest import seconds_until_sunday_evening
+
+                while True:
+                    await asyncio.sleep(seconds_until_sunday_evening(datetime.now()))
+                    stamp = datetime.now().strftime("%G-W%V")
+                    if state.get("last_digest") == stamp:
+                        continue
+                    try:
+                        text = await build_digest(client, config)
+                        if text:
+                            await messenger.send(text)
+                        state.set("last_digest", stamp)
+                    except Exception:  # noqa: BLE001
+                        log.exception("weekly digest failed")
+
             tasks = [asyncio.create_task(pump_events()), asyncio.create_task(pump_shots())]
+            if config.digest_enabled:
+                tasks.append(asyncio.create_task(weekly_digest()))
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in pending:
                 task.cancel()
