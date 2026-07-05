@@ -136,7 +136,16 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
         convo = Conversation(messenger, state, save_notes)
         cache_frame, latest_frame = make_frame_cache()
         router = CommandRouter(client, state, convo, messenger, config, latest_frame)
-        await messenger.start()
+        # messenger APIs can be flaky at boot; retry instead of crash-looping
+        for attempt in range(8):
+            try:
+                await messenger.start()
+                break
+            except Exception as exc:  # noqa: BLE001
+                if attempt == 7:
+                    raise
+                log.warning("messenger start failed (%s); retry in %ds", exc, 10 * (attempt + 1))
+                await asyncio.sleep(10 * (attempt + 1))
         try:
             await convo.resume_if_pending()
 
