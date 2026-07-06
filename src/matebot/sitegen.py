@@ -17,7 +17,13 @@ from .slog import Shot, SlogError, parse_slog
 
 log = logging.getLogger(__name__)
 
-WEB_ASSETS = ("index.html", "app.js", "style.css")
+WEB_ASSETS = (
+    "index.html",
+    "app.js",
+    "style.css",
+    "vendor/chart.umd.js",
+    "vendor/chartjs-plugin-annotation.min.js",
+)
 
 
 def _round(values: list[float], digits: int) -> list[float]:
@@ -106,6 +112,7 @@ def generate(shots_dir: str | Path, out_dir: str | Path, *, title: str = "Shot J
     (out_dir / "index.json").write_text(json.dumps({"title": title, "shots": index}))
 
     web = importlib.resources.files("matebot") / "web"
+    (out_dir / "vendor").mkdir(exist_ok=True)
     for name in WEB_ASSETS:
         (out_dir / name).write_text((web / name).read_text())
     log.info("site generated: %d shots -> %s", len(index), out_dir)

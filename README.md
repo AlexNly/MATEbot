@@ -185,6 +185,10 @@ support: contributions welcome.
 
 - [GaggiMate](https://gaggimate.eu) by jniebuhr — the machine controller this
   companion talks to.
+- The journal's shot chart recreates the look of GaggiMate's own web UI
+  (independent reimplementation — GaggiMate's UI code is CC BY-NC-SA and none
+  of it is copied). Rendered with [Chart.js](https://www.chartjs.org/) and
+  chartjs-plugin-annotation (MIT, vendored).
 - The dial-in hints follow the guide from
   [Automatic Pro cheat sheet](https://modsmthng.github.io/Automatic-Pro/) by
   **modsmthng**.

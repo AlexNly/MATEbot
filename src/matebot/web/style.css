@@ -84,6 +84,9 @@ h2 { margin: 4px 0 2px; font-size: 21px; }
 .meta { color: var(--ink-2); margin-bottom: 16px; }
 .meta b { color: var(--ink); font-weight: 600; }
 
+.chartjs-card .chart-holder { position: relative; height: 460px; }
+@media (max-width: 640px) { .chartjs-card .chart-holder { height: 360px; } }
+
 .compare-row { margin: -6px 0 12px; }
 #compare {
   padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px;
@@ -123,4 +126,41 @@ svg .axis-title { font-size: 9px; }
 
 @media (max-width: 640px) {
   th:nth-child(2), td:nth-child(2), th:nth-child(7), td:nth-child(7) { display: none; }
+}
+
+/* ---- shot player ---- */
+.player { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.pbtn {
+  min-width: 42px; height: 42px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--page); color: var(--ink); font-size: 17px; cursor: pointer;
+}
+.pbtn:hover { background: color-mix(in oklab, var(--s1) 10%, var(--page)); }
+#scrub { flex: 1; accent-color: var(--s1); min-height: 42px; }
+.ptime { font-variant-numeric: tabular-nums; color: var(--ink-2); min-width: 52px; }
+#speed {
+  height: 42px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--page); color: var(--ink); font: inherit; padding: 0 6px;
+}
+
+.readouts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; }
+.tile {
+  background: var(--page); border: 1px solid var(--border); border-radius: 10px;
+  padding: 6px 10px; text-align: center;
+}
+.tlabel { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.tval { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.tunit { font-size: 12px; font-weight: 400; color: var(--muted); }
+
+/* theater (pseudo-fullscreen, works on phones) */
+.chart-card.theater {
+  position: fixed; inset: 0; z-index: 50; margin: 0; border-radius: 0; border: none;
+  overflow-y: auto; padding: max(10px, env(safe-area-inset-top)) 12px 12px;
+}
+.chart-card.theater .chart-holder { height: calc(100vh - 190px); }
+body.theater-open { overflow: hidden; }
+
+@media (max-width: 640px) {
+  .readouts { grid-template-columns: repeat(2, 1fr); }
+  .ptime { display: none; }
+  .chart-card.theater .chart-holder { height: calc(100vh - 230px); }
 }

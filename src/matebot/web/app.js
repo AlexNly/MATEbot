@@ -111,136 +111,270 @@ function renderDetail(id, shot, compareId, compare) {
     : "";
 }
 
-/* ---- Combined multi-axis chart, styled after the GaggiMate web UI ----
- * One plot, three scales: temperature (left axis), pressure/flow (right axis),
- * weight (far-right axis). Colors follow GaggiMate's language: orange temps,
- * blue pressures, green flows, purple weights; targets dashed.
+/* ---- Shot chart, matching the GaggiMate web UI ----
+ * Visual design recreated from scratch to match the machine's own shot chart
+ * (GaggiMate's UI code is CC BY-NC-SA and was not copied; colors, axes and
+ * annotation styling are reimplemented from observation). Rendered with
+ * Chart.js + chartjs-plugin-annotation (both MIT, vendored locally).
  */
 
-function combinedChart(parent, t, phases, S, overlay) {
-  if (!t || t.length < 2) return;
-  const v = S("v"), ev = S("ev");
-  const weight = v || ev;
-  const series = [
-    { key: "ct", label: "Current Temperature", data: S("ct"), color: css("--c-temp"), axis: "temp" },
-    { key: "tt", label: "Target Temperature", data: S("tt"), color: css("--c-temp"), axis: "temp", dash: true },
-    { key: "cp", label: "Current Pressure", data: S("cp"), color: css("--c-press"), axis: "bar" },
-    { key: "tp", label: "Target Pressure", data: S("tp"), color: css("--c-press"), axis: "bar", dash: true },
-    { key: "fl", label: "Current Pump Flow", data: S("fl"), color: css("--c-flow"), axis: "bar" },
-    { key: "pf", label: "Current Puck Flow", data: S("pf"), color: css("--c-puck"), axis: "bar" },
-    { key: "tf", label: "Target Pump Flow", data: S("tf"), color: css("--c-flow"), axis: "bar", dash: true },
-    { key: "w", label: v ? "Weight" : "Weight (est.)", data: weight, color: css("--c-weight"), axis: "g" },
-    { key: "vf", label: "Weight Flow", data: S("vf"), color: css("--c-wflow"), axis: "bar" },
-  ].filter(s => s.data);
+const GM = {
+  temp: "#F0561D", targetTemp: "#731F00",
+  press: "#0066CC", flow: "#63993D", puck: "#204D00",
+  weight: "#8B5CF6", weightFlow: "#4b2e8d",
+  phase: "#6B7280",
+};
 
-  // overlay: dimmed pressure/flow/weight curves of another shot for comparison
-  const overlaySeries = overlay ? [
-    { data: overlay.S("cp"), color: css("--c-press"), axis: "bar", t: overlay.t },
-    { data: overlay.S("fl"), color: css("--c-flow"), axis: "bar", t: overlay.t },
-    { data: overlay.S("v") || overlay.S("ev"), color: css("--c-weight"), axis: "g", t: overlay.t },
-  ].filter(s => s.data) : [];
+function rgba(hex, alpha) {
+  const v = parseInt(hex.slice(1, 7), 16);
+  return `rgba(${(v >> 16) & 255},${(v >> 8) & 255},${v & 255},${alpha})`;
+}
+
+let CHART = null;
+
+function combinedChart(parent, t, phases, S, overlay) {
+  if (!t || t.length < 2 || typeof Chart === "undefined") return;
+  Chart.register(window["chartjs-plugin-annotation"]);
 
   const card = document.createElement("div");
-  card.className = "chart-card";
-  card.innerHTML = `<div class="legend">${series.map(s =>
-    `<span><span class="chip${s.dash ? " dash" : ""}" style="background:${s.color};color:${s.color}"></span>${s.label}</span>`).join("")}
-    ${overlaySeries.length ? `<span class="overlay-note">dimmed: shot ${overlay.label}</span>` : ""}
-  </div>`;
+  card.className = "chart-card chartjs-card";
+  card.innerHTML = `<div class="chart-holder"><canvas></canvas></div>`;
   parent.appendChild(card);
 
-  const W = Math.max(340, Math.min(card.clientWidth - 28, 900)), H = 340;
-  const hasWeight = series.some(s => s.axis === "g") || overlaySeries.some(s => s.axis === "g");
-  const padL = 44, padR = hasWeight ? 84 : 46, padT = 10, padB = 26;
-  const xMax = Math.max(t[t.length - 1] || 1,
-    ...overlaySeries.map(s => s.t[s.t.length - 1] || 0));
+  const pts = (data, tt = t) => data.map((y, i) => ({ x: tt[i], y }));
+  const ds = (label, data, color, opts = {}) => ({
+    label, data: pts(data), borderColor: color, backgroundColor: rgba(color, 0.06),
+    pointStyle: false, borderWidth: 3, ...opts,
+  });
 
-  // temp axis: tight window like GaggiMate (e.g. 86-100 °C)
-  const temps = series.filter(s => s.axis === "temp").flatMap(s => s.data);
-  const tempMin = temps.length ? Math.floor(Math.min(...temps) / 2) * 2 : 0;
-  const tempMax = temps.length ? Math.ceil((Math.max(...temps) + 0.5) / 2) * 2 : 1;
-  // bar / g/s axis: zero-based
-  const bars = series.concat(overlaySeries).filter(s => s.axis === "bar").flatMap(s => s.data);
-  const barMax = Math.max(2, Math.ceil(Math.max(...bars, 0) * 1.15));
-  // weight axis: zero-based
-  const gWeights = series.filter(s => s.axis === "g").flatMap(s => s.data)
-    .concat(overlaySeries.filter(s => s.axis === "g").flatMap(s => s.data));
-  const gMax = hasWeight ? Math.max(5, Math.ceil(Math.max(...gWeights) * 1.1 / 5) * 5) : 1;
+  const datasets = [
+    S("ct") && ds("Current Temperature", S("ct"), GM.temp, { yAxisID: "y" }),
+    S("tt") && ds("Target Temperature", S("tt"), GM.targetTemp,
+      { yAxisID: "y", borderDash: [6, 6], fill: true }),
+    S("cp") && ds("Current Pressure", S("cp"), GM.press, { yAxisID: "y1" }),
+    S("tp") && ds("Target Pressure", S("tp"), GM.press,
+      { yAxisID: "y1", borderDash: [6, 6], fill: true }),
+    S("fl") && ds("Current Pump Flow", S("fl"), GM.flow, { yAxisID: "y1" }),
+    S("pf") && ds("Current Puck Flow", S("pf"), GM.puck, { yAxisID: "y1" }),
+    S("tf") && ds("Target Pump Flow", S("tf"), GM.flow, { yAxisID: "y1", borderDash: [6, 6] }),
+    S("v") && ds("Weight", S("v"), GM.weight, { yAxisID: "y2" }),
+    S("vf") && ds("Weight Flow", S("vf"), GM.weightFlow, { yAxisID: "y1" }),
+  ].filter(Boolean);
 
-  const x = s => padL + (s / xMax) * (W - padL - padR);
-  const yOf = {
-    temp: val => padT + (1 - (val - tempMin) / (tempMax - tempMin)) * (H - padT - padB),
-    bar: val => padT + (1 - val / barMax) * (H - padT - padB),
-    g: val => padT + (1 - val / gMax) * (H - padT - padB),
+  // comparison shot: same series, ghosted (dimmed + thinner), out of the legend
+  if (overlay) {
+    const O = overlay.S;
+    const ghost = (label, data, color, extra = {}) => data && {
+      label: `${overlay.label} ${label}`, data: pts(data, overlay.t),
+      borderColor: rgba(color, 0.42), pointStyle: false, borderWidth: 2,
+      _ghost: true, ...extra,
+    };
+    datasets.push(...[
+      ghost("Temp", O("ct"), GM.temp, { yAxisID: "y" }),
+      ghost("Pressure", O("cp"), GM.press, { yAxisID: "y1" }),
+      ghost("Pump Flow", O("fl"), GM.flow, { yAxisID: "y1" }),
+      ghost("Weight", O("v") || O("ev"), GM.weight, { yAxisID: "y2" }),
+    ].filter(Boolean));
+  }
+
+  // y (temperature) range with the machine's padding rule
+  const temps = datasets.filter(d => d.yAxisID === "y").flatMap(d => d.data.map(p => p.y));
+  const tMin = Math.floor(Math.min(...temps)), tMax = Math.ceil(Math.max(...temps));
+  const pad = tMax - tMin > 10 ? 2 : 5;
+
+  const hasWeight = datasets.some(d => d.yAxisID === "y2");
+  const xMax = Math.max(t[t.length - 1], overlay ? overlay.t[overlay.t.length - 1] : 0);
+
+  const annotations = {};
+  (phases || []).forEach((p, i) => {
+    if (p.t >= xMax) return;
+    annotations[`phase_${i}`] = {
+      type: "line", xMin: p.t, xMax: p.t,
+      borderColor: GM.phase, borderWidth: 1,
+      label: {
+        display: true, content: p.name, rotation: -90, position: "end",
+        xAdjust: i === 0 ? -5 : -10, padding: { x: 6, y: 0 },
+        color: "rgb(255,255,255)", backgroundColor: "rgba(22,33,50,0.75)",
+        textAlign: "start", font: { size: 11, weight: 500 }, clip: false,
+      },
+    };
+  });
+
+  const ink2 = css("--ink-2"), grid = css("--grid");
+  CHART?.destroy();
+  CHART = new Chart(card.querySelector("canvas"), {
+    type: "line",
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, parsing: false,
+      spanGaps: true, animation: false, normalized: true,
+      interaction: { mode: "index", intersect: false },
+      scales: {
+        x: {
+          type: "linear", min: t[0], max: xMax,
+          title: { display: true, text: "Time (s)", color: ink2 },
+          ticks: { color: ink2, font: { size: 12 } }, grid: { color: grid },
+        },
+        y: {
+          min: Math.max(tMin - pad, 0), max: tMax + pad,
+          ticks: { color: ink2, callback: v => `${v.toFixed()} °C` },
+          grid: { color: grid },
+        },
+        y1: {
+          position: "right", min: 0, max: 16,
+          ticks: { color: ink2, callback: v => `${v.toFixed()} bar / g/s` },
+          grid: { drawOnChartArea: false },
+        },
+        ...(hasWeight ? {
+          y2: {
+            position: "right", min: 0, offset: true,
+            // fixed max so the axis doesn't rescale during playback
+            max: Math.ceil(Math.max(...datasets.filter(d => d.yAxisID === "y2")
+              .flatMap(d => d.data.map(p => p.y))) * 1.05),
+            ticks: { color: ink2, callback: v => `${v.toFixed()} g` },
+            grid: { drawOnChartArea: false },
+          },
+        } : {}),
+      },
+      plugins: {
+        tooltip: { filter: item => !CHART?.data.datasets[item.datasetIndex]?._ghost },
+        annotation: { annotations },
+        legend: {
+          position: "top",
+          labels: {
+            usePointStyle: true, pointStyle: "line", pointStyleWidth: 20,
+            padding: 8, color: ink2,
+            filter: item => !CHART?.data.datasets[item.datasetIndex]?._ghost,
+            generateLabels: chart => {
+              const labels = Chart.defaults.plugins.legend.labels.generateLabels(chart)
+                .filter(l => !chart.data.datasets[l.datasetIndex]._ghost);
+              for (const l of labels) {
+                l.lineWidth = 3;
+                l.lineDash = chart.data.datasets[l.datasetIndex].borderDash || [];
+              }
+              return labels;
+            },
+          },
+        },
+      },
+    },
+  });
+
+  attachPlayer(card, t, xMax, S, overlay);
+}
+
+/* ---- Shot playback: replay the shot in real time ---- */
+
+function attachPlayer(card, t, xMax, S, overlay) {
+  const controls = document.createElement("div");
+  controls.className = "player";
+  controls.innerHTML = `
+    <button class="pbtn" id="play" title="Replay the shot">▶</button>
+    <input type="range" id="scrub" min="0" max="${xMax}" step="0.05" value="${xMax}">
+    <span class="ptime" id="ptime">${xMax.toFixed(1)}s</span>
+    <select id="speed" title="Playback speed">
+      <option value="1">1×</option><option value="2">2×</option>
+      <option value="4">4×</option><option value="8">8×</option>
+    </select>
+    <button class="pbtn" id="theater" title="Full screen">⛶</button>`;
+  card.prepend(controls);
+
+  const tiles = document.createElement("div");
+  tiles.className = "readouts";
+  const TILES = [
+    ["cp", "Pressure", "bar", GM.press], ["fl", "Flow", "g/s", GM.flow],
+    ["ct", "Temp", "°C", GM.temp], [S("v") ? "v" : "ev", "Weight", "g", GM.weight],
+  ].filter(([k]) => S(k));
+  tiles.innerHTML = TILES.map(([k, label, unit, color]) =>
+    `<div class="tile"><div class="tlabel">${label}</div>
+     <div class="tval" id="tile-${k}" style="color:${color}">–<span class="tunit"> ${unit}</span></div></div>`
+  ).join("");
+  controls.after(tiles);
+
+  const full = CHART.data.datasets.map(d => d.data);
+  const times = CHART.data.datasets.map(d => d.data.map(p => p.x));
+  CHART.options.plugins.annotation.annotations.playhead = {
+    type: "line", xMin: xMax, xMax: xMax, borderColor: "rgba(148,163,184,0.9)",
+    borderWidth: 1.5, display: false,
   };
 
-  const leftTicks = niceTicks(tempMin, tempMax, 6).map(val =>
-    `<line x1="${padL}" y1="${yOf.temp(val)}" x2="${W - padR}" y2="${yOf.temp(val)}" stroke="var(--grid)"/>
-     <text x="${padL - 6}" y="${yOf.temp(val) + 3}" text-anchor="end">${val}°</text>`).join("");
-  const rightTicks = niceTicks(0, barMax, 6).map(val =>
-    `<text x="${W - padR + 6}" y="${yOf.bar(val) + 3}">${val}</text>`).join("");
-  const gTicks = hasWeight ? niceTicks(0, gMax, 5).map(val =>
-    `<text x="${W - padR + 40}" y="${yOf.g(val) + 3}">${val}g</text>`).join("") : "";
-  const axisTitles = `<text x="${W - padR + 6}" y="${padT - 1}" class="axis-title">bar·g/s</text>`;
-  const xt = niceTicks(0, xMax, 8).map(val =>
-    `<text x="${x(val)}" y="${H - 8}" text-anchor="middle">${val}s</text>`).join("");
+  const idxAt = time => {
+    let i = t.length - 1;
+    while (i > 0 && t[i] > time) i--;
+    return i;
+  };
 
-  // GaggiMate-style vertical phase labels
-  const phaseMarks = (phases || []).filter(p => p.t > 0.3 && p.t < xMax - 0.3).map(p => {
-    const px = x(p.t);
-    const name = p.name.length > 20 ? p.name.slice(0, 19) + "…" : p.name;
-    return `<line x1="${px}" y1="${padT}" x2="${px}" y2="${H - padB}" stroke="var(--axis)"/>
-      <text class="phase-label" x="${px}" y="${padT + 4}"
-        transform="rotate(-90 ${px} ${padT + 4})" text-anchor="end">${esc(name)}</text>`;
-  }).join("");
+  function renderAt(time, playing) {
+    CHART.data.datasets.forEach((d, di) => {
+      let n = times[di].length;
+      if (time < xMax) {
+        n = 0;
+        while (n < times[di].length && times[di][n] <= time) n++;
+      }
+      d.data = full[di].slice(0, Math.max(n, 1));
+    });
+    const ph = CHART.options.plugins.annotation.annotations.playhead;
+    ph.display = playing || time < xMax;
+    ph.xMin = ph.xMax = time;
+    CHART.update("none");
+    const i = idxAt(time);
+    for (const [k] of TILES) {
+      const el = $(`#tile-${k}`);
+      const unit = el.querySelector(".tunit").outerHTML;
+      el.innerHTML = (S(k)[Math.min(i, S(k).length - 1)] ?? 0).toFixed(1) + unit;
+    }
+    $("#ptime").textContent = `${Math.min(time, xMax).toFixed(1)}s`;
+    $("#scrub").value = Math.min(time, xMax);
+  }
 
-  const overlayPaths = overlaySeries.map(s => {
-    const y = yOf[s.axis];
-    const d = s.data.map((val, i) => `${i ? "L" : "M"}${x(s.t[i]).toFixed(1)},${y(val).toFixed(1)}`).join("");
-    return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.5"
-      opacity="0.4" stroke-linejoin="round"/>`;
-  }).join("");
+  let raf = null, playT = xMax, lastTs = null;
+  const playBtn = $("#play");
 
-  const paths = series.map(s => {
-    const y = yOf[s.axis];
-    const d = s.data.map((val, i) => `${i ? "L" : "M"}${x(t[i]).toFixed(1)},${y(val).toFixed(1)}`).join("");
-    return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2"
-      ${s.dash ? 'stroke-dasharray="6 4" opacity="0.8"' : ""} stroke-linejoin="round"/>`;
-  }).join("");
+  function stop() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = null; lastTs = null;
+    playBtn.textContent = "▶";
+  }
 
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("width", W);
-  svg.setAttribute("height", H);
-  svg.innerHTML = `${leftTicks}${rightTicks}${gTicks}${axisTitles}${xt}
-    <line x1="${padL}" y1="${H - padB}" x2="${W - padR}" y2="${H - padB}" stroke="var(--axis)"/>
-    ${phaseMarks}${overlayPaths}${paths}
-    <line class="cross" x1="0" y1="${padT}" x2="0" y2="${H - padB}" stroke="var(--axis)" visibility="hidden"/>`;
-  card.appendChild(svg);
+  function tick(ts) {
+    if (lastTs != null) {
+      playT += ((ts - lastTs) / 1000) * Number($("#speed").value);
+      if (playT >= xMax) {
+        playT = xMax;
+        renderAt(playT, false);
+        stop();
+        return;
+      }
+      renderAt(playT, true);
+    }
+    lastTs = ts;
+    raf = requestAnimationFrame(tick);
+  }
 
-  const tip = document.createElement("div");
-  tip.className = "tooltip";
-  card.appendChild(tip);
-  const cross = svg.querySelector(".cross");
-  const unit = { temp: "°C", bar: "", g: "g" };
-
-  svg.addEventListener("pointermove", ev => {
-    const rect = svg.getBoundingClientRect();
-    const px = ev.clientX - rect.left;
-    if (px < padL || px > W - padR) return hide();
-    const time = ((px - padL) / (W - padL - padR)) * xMax;
-    let i = t.findIndex(val => val >= time);
-    if (i < 0) i = t.length - 1;
-    cross.setAttribute("x1", x(t[i]));
-    cross.setAttribute("x2", x(t[i]));
-    cross.setAttribute("visibility", "visible");
-    tip.innerHTML = `${t[i].toFixed(1)}s<br>` + series.filter(s => !s.dash).map(s =>
-      `<span style="color:${s.color}">●</span> ${s.label.replace("Current ", "")} <b>${s.data[i].toFixed(1)}${unit[s.axis]}</b>`).join("<br>");
-    tip.style.display = "block";
-    const left = Math.min(px + 14, W - tip.offsetWidth - 8);
-    tip.style.left = `${Math.max(0, left)}px`;
-    tip.style.top = `${ev.clientY - rect.top + 10}px`;
+  playBtn.addEventListener("click", () => {
+    if (raf) { stop(); return; }
+    if (playT >= xMax) playT = 0;
+    playBtn.textContent = "⏸";
+    raf = requestAnimationFrame(tick);
   });
-  svg.addEventListener("pointerleave", hide);
-  function hide() { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); }
+  $("#scrub").addEventListener("input", () => {
+    stop();
+    playT = Number($("#scrub").value);
+    renderAt(playT, true);
+  });
+  $("#theater").addEventListener("click", () => {
+    card.classList.toggle("theater");
+    document.body.classList.toggle("theater-open");
+    CHART.resize();
+  });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && card.classList.contains("theater")) {
+      card.classList.remove("theater");
+      document.body.classList.remove("theater-open");
+      CHART.resize();
+    }
+  });
+  renderAt(xMax, false);
 }
 
 function niceTicks(min, max, count) {
