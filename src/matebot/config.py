@@ -30,6 +30,8 @@ ENV_MAP = {
     "digest_enabled": "MATEBOT_DIGEST",
     "clean_every": "MATEBOT_CLEAN_EVERY",
     "plots_enabled": "MATEBOT_PLOTS",
+    "wake_hook": "MATEBOT_WAKE_HOOK",
+    "sleep_hook": "MATEBOT_SLEEP_HOOK",
 }
 
 
@@ -57,6 +59,8 @@ class Config:
     digest_enabled: bool = True  # weekly summary on Sunday evening
     clean_every: int = 40  # backflush reminder every N espresso shots; 0 = off
     plots_enabled: bool = True  # send the shot chart as a photo (needs matplotlib)
+    wake_hook: str = ""  # shell command to power the machine's smart plug ON
+    sleep_hook: str = ""  # shell command to power the smart plug OFF
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:

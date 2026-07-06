@@ -8,6 +8,7 @@ gets swallowed as a free-text answer.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -69,14 +70,62 @@ class CommandRouter:
     async def _cmd_help(self) -> None:
         await self.messenger.send(HELP)
 
+    async def _run_hook(self, hook: str, label: str) -> bool:
+        """Run a smart-plug shell hook; reports failure to the user."""
+        try:
+            proc = await asyncio.create_subprocess_shell(
+                hook,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=20)
+            if proc.returncode != 0:
+                log.warning("%s hook failed (%d): %s", label, proc.returncode, out.decode()[-200:])
+                await self.messenger.send(f"⚠️ The {label} hook failed — check the plug.")
+                return False
+            return True
+        except Exception as exc:  # noqa: BLE001
+            log.warning("%s hook error: %s", label, exc)
+            await self.messenger.send(f"⚠️ The {label} hook errored: {exc}")
+            return False
+
+    async def _machine_online(self) -> bool:
+        _, age = self.latest_frame()
+        return age < 20
+
     async def _cmd_wake(self) -> None:
+        cold_start = self.config.wake_hook and not await self._machine_online()
+        if self.config.wake_hook and not await self._run_hook(self.config.wake_hook, "wake"):
+            return
+        if cold_start:
+            await self.messenger.send(
+                "🔌 Plug is on — waiting for the machine to boot (can take a minute)…"
+            )
+            for _ in range(90):
+                await asyncio.sleep(1)
+                if await self._machine_online():
+                    break
+            else:
+                await self.messenger.send(
+                    "⚠️ The machine didn't come online. Check the plug and the machine's switch."
+                )
+                return
         await self.client.send_event("req:change-mode", mode=1)
         self._awaiting_ready = True
         await self.messenger.send("🔥 Waking the machine — I'll tell you when it's hot.")
 
     async def _cmd_sleep(self) -> None:
-        await self.client.send_event("req:change-mode", mode=0)
+        try:
+            await self.client.send_event("req:change-mode", mode=0)
+        except MachineError:
+            if not self.config.sleep_hook:
+                raise
         self._awaiting_ready = False
+        if self.config.sleep_hook:
+            await asyncio.sleep(3)  # let the machine settle into standby first
+            if await self._run_hook(self.config.sleep_hook, "sleep"):
+                await self.messenger.send("😴 Standby, and the plug is off. Fully dark.")
+                return
         await self.messenger.send("😴 Machine is going to standby.")
 
     async def _cmd_status(self) -> None:

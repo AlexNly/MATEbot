@@ -119,3 +119,57 @@ async def test_telegram_suffix_stripped(setup):
     router, client, *_ = setup
     assert await router.handle("/sleep@Gaggi0614bot")
     assert client.requests[-1][0] == "req:change-mode"
+
+
+@pytest.mark.asyncio
+async def test_wake_hook_runs_and_cold_start_waits(tmp_path, setup):
+    router, client, state, convo, fm, cache = setup
+    marker = tmp_path / "on"
+    router.config.wake_hook = f"touch {marker}"
+    # machine already online: hook runs, no boot wait
+    cache({"tp": "evt:status", "m": 0, "ct": 60.0, "tt": 0})
+    await router.handle("/wake")
+    assert marker.exists()
+    assert client.requests[-1] == ("req:change-mode", {"mode": 1})
+    assert not any("waiting for the machine to boot" in t for t in fm.sent)
+
+
+@pytest.mark.asyncio
+async def test_wake_hook_failure_aborts(setup):
+    router, client, state, convo, fm, cache = setup
+    router.config.wake_hook = "exit 1"
+    cache({"tp": "evt:status", "m": 0, "ct": 60.0, "tt": 0})
+    await router.handle("/wake")
+    assert client.requests == []
+    assert any("hook failed" in t for t in fm.sent)
+
+
+@pytest.mark.asyncio
+async def test_sleep_hook_cuts_power(monkeypatch, tmp_path, setup):
+    router, client, state, convo, fm, cache = setup
+    marker = tmp_path / "off"
+    router.config.sleep_hook = f"touch {marker}"
+
+    async def no_sleep(_):
+        return None
+
+    monkeypatch.setattr("matebot.commands.asyncio.sleep", no_sleep)
+    await router.handle("/sleep")
+    assert client.requests[-1] == ("req:change-mode", {"mode": 0})
+    assert marker.exists()
+    assert any("Fully dark" in t for t in fm.sent)
+
+
+@pytest.mark.asyncio
+async def test_sleep_hook_works_when_machine_already_off(monkeypatch, tmp_path, setup):
+    router, client, state, convo, fm, cache = setup
+    client.connected = False
+    marker = tmp_path / "off"
+    router.config.sleep_hook = f"touch {marker}"
+
+    async def no_sleep(_):
+        return None
+
+    monkeypatch.setattr("matebot.commands.asyncio.sleep", no_sleep)
+    await router.handle("/sleep")
+    assert marker.exists()  # plug still gets cut even though the WS is down
