@@ -9,13 +9,14 @@ Layout of the data repo (created on first sync if missing):
 
 from __future__ import annotations
 
-import asyncio
 import fcntl
 import json
 import logging
 import re
 import subprocess
 from pathlib import Path
+
+import aiohttp
 
 from .machine import GaggiMateClient, MachineError
 from .sitegen import generate
@@ -130,15 +131,33 @@ async def sync(
 
 
 async def sync_soon(
-    client: GaggiMateClient, repo: str | Path, notify, *, site_title: str = "Shot Journal"
+    client: GaggiMateClient, repo: str | Path, notify, *,
+    site_title: str = "Shot Journal", state=None, quiet: bool = False,
 ) -> None:
-    """Post-shot sync wrapper: run, report conflicts to the user, never raise."""
+    """Post-shot sync wrapper: run, report problems, never raise.
+
+    A failed sync is remembered in *state* (``sync_pending``) so the caller
+    can retry when the machine comes back online.
+    """
     try:
         await sync(client, repo, site_title=site_title)
     except SyncConflict as exc:
         await notify(f"⚠️ Shot journal sync hit a git conflict — fix it manually:\n{exc}")
+    except (TimeoutError, aiohttp.ClientError, OSError) as exc:
+        log.warning("sync failed, machine unreachable: %r", exc)
+        if state is not None:
+            state.set("sync_pending", True)
+        if not quiet:
+            await notify(
+                "📡 The machine went offline before the journal could sync — "
+                "I'll catch up as soon as it's back on."
+            )
     except Exception as exc:  # noqa: BLE001
         log.exception("sync failed")
-        await notify(f"⚠️ Shot journal sync failed: {exc}")
+        if state is not None:
+            state.set("sync_pending", True)
+        if not quiet:
+            await notify(f"⚠️ Shot journal sync failed: {exc!r}")
     else:
-        await asyncio.sleep(0)
+        if state is not None:
+            state.set("sync_pending", False)
