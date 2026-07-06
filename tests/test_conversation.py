@@ -158,3 +158,13 @@ async def test_save_failure_reported(tmp_path):
     for step in ("bt", "bean", "grind", "din", "dout", "txt"):
         await answer(c, f"g|65|{step}|skip")
     assert "⚠️" in fm.sent[-1][0]
+
+
+def test_signoff_matches_time_of_day():
+    from matebot.conversation import _signoff
+
+    assert "kickstart" in _signoff(7)      # 7 am is not bedtime
+    assert "Back to it" in _signoff(13)
+    assert "evening" in _signoff(19)
+    assert "dreams" in _signoff(23)
+    assert "dreams" in _signoff(2)

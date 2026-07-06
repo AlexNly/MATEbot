@@ -51,6 +51,17 @@ def _fmt_duration(ms: int) -> str:
     return f"{ms / 1000:.0f}s"
 
 
+def _signoff(hour: int) -> str:
+    """A closing line that knows what time it is (no 'sweet dreams' at 7 am)."""
+    if 5 <= hour < 11:
+        return "Enjoy the kickstart."
+    if 11 <= hour < 17:
+        return "Back to it."
+    if 17 <= hour < 22:
+        return "Enjoy the evening — bold choice, by the way."
+    return "Sweet dreams tonight. Eventually."
+
+
 @dataclass
 class PendingShot:
     shot_id: int
@@ -232,9 +243,11 @@ class Conversation:
             stars = "★" * int(answers.get("rating", 0))
             suffix = f" (superseded by #{superseded_by})" if superseded_by else ""
             ratio = f" · 1:{answers['ratio']}" if answers.get("ratio") else ""
+            from datetime import datetime
+
             await self.messenger.send(
                 f"✅ Shot #{pending.shot_id} logged{suffix}. {stars}{ratio}\n"
-                "Filed straight into your GaggiMate shot notes. Sweet dreams tonight."
+                f"Filed straight into your GaggiMate shot notes. {_signoff(datetime.now().hour)}"
             )
         else:
             await self.messenger.send(
