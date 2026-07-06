@@ -66,6 +66,15 @@ class DiscordMessenger(Messenger):
         msg = await channel.send(text, view=self._view(options))
         return str(msg.id)
 
+    async def send_photo(self, image: bytes, caption: str) -> str:
+        import io as _io
+
+        import discord
+
+        channel = self.client.get_channel(self.channel_id)
+        msg = await channel.send(caption, file=discord.File(_io.BytesIO(image), "shot.png"))
+        return str(msg.id)
+
     async def edit(self, ref: str, text: str, options: list[Option] | None = None) -> None:
         try:
             channel = self.client.get_channel(self.channel_id)

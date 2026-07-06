@@ -112,7 +112,8 @@ class Conversation:
     # ------------------------------------------------------------- shots
 
     async def start_shot(
-        self, shot_id: int, profile: str, duration_ms: int, volume_g: float
+        self, shot_id: int, profile: str, duration_ms: int, volume_g: float,
+        photo: bytes | None = None,
     ) -> None:
         if self.pending is not None:
             await self._finish(superseded_by=shot_id)
@@ -124,7 +125,10 @@ class Conversation:
             + (f" · {volume_g:.1f} g in the cup" if volume_g else "")
             + "\n\nLet's log it before you forget:"
         )
-        await self.messenger.send(summary)
+        if photo:
+            await self.messenger.send_photo(photo, summary)
+        else:
+            await self.messenger.send(summary)
         await self._prompt()
 
     async def resume_if_pending(self) -> None:

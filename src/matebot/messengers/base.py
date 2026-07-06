@@ -48,6 +48,11 @@ class Messenger(ABC):
     async def edit(self, ref: str, text: str, options: list[Option] | None = None) -> None:
         """Replace a previously sent message's text/options (best effort)."""
 
+    async def send_photo(self, image: bytes, caption: str) -> str:
+        """Send an image with caption; backends without photo support fall
+        back to the caption text."""
+        return await self.send(caption)
+
     @abstractmethod
     def events(self) -> AsyncIterator[Event]:
         """User interactions, in order. Runs until stop()."""

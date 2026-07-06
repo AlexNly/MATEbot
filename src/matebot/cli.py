@@ -214,12 +214,25 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
                             "volume_g": shot.entry.volume_g,
                         },
                     )
+                    photo = None
+                    if config.plots_enabled:
+                        try:
+                            from .plot import render_shot_png
+                            from .slog import parse_slog
+
+                            parsed = parse_slog(await client.fetch_slog(shot.entry.id))
+                            photo = render_shot_png(
+                                parsed, title=f"Shot #{shot.entry.id} — {parsed.profile_name}"
+                            )
+                        except Exception as exc:  # noqa: BLE001 - photo is a nice-to-have
+                            log.info("shot plot skipped: %s", exc)
                     try:
                         await convo.start_shot(
                             shot.entry.id,
                             shot.profile_label or shot.entry.profile_name,
                             shot.duration_ms,
                             shot.entry.volume_g,
+                            photo=photo,
                         )
                     except Exception:  # noqa: BLE001 - keep watching even if messaging fails
                         log.exception("questionnaire start failed (state kept for resume)")

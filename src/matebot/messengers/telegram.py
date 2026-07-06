@@ -92,6 +92,18 @@ class TelegramMessenger(Messenger):
                 await asyncio.sleep(2 * (attempt + 1))
         raise last_exc
 
+    async def send_photo(self, image: bytes, caption: str) -> str:
+        last_exc = None
+        for attempt in range(5):
+            try:
+                msg = await self.app.bot.send_photo(self.chat_id, photo=image, caption=caption)
+                return str(msg.message_id)
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                log.warning("photo send attempt %d failed: %s", attempt + 1, exc)
+                await asyncio.sleep(2 * (attempt + 1))
+        raise last_exc
+
     async def edit(self, ref: str, text: str, options: list[Option] | None = None) -> None:
         try:
             await self.app.bot.edit_message_text(

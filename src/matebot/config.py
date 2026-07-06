@@ -29,6 +29,7 @@ ENV_MAP = {
     "hints_enabled": "MATEBOT_HINTS",
     "digest_enabled": "MATEBOT_DIGEST",
     "clean_every": "MATEBOT_CLEAN_EVERY",
+    "plots_enabled": "MATEBOT_PLOTS",
 }
 
 
@@ -55,6 +56,7 @@ class Config:
     hints_enabled: bool = True  # dial-in suggestions after sour/bitter/low-rated shots
     digest_enabled: bool = True  # weekly summary on Sunday evening
     clean_every: int = 40  # backflush reminder every N espresso shots; 0 = off
+    plots_enabled: bool = True  # send the shot chart as a photo (needs matplotlib)
 
     @classmethod
     def load(cls, path: str | Path | None = None) -> Config:
@@ -74,7 +76,7 @@ class Config:
                 value = float(value)
             elif f.name == "clean_every":
                 value = int(value)
-            elif f.name in ("sync_enabled", "hints_enabled", "digest_enabled"):
+            elif f.name in ("sync_enabled", "hints_enabled", "digest_enabled", "plots_enabled"):
                 value = str(value).lower() in ("1", "true", "yes", "on")
             kwargs[f.name] = value
         config = cls(**kwargs)

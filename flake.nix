@@ -19,6 +19,7 @@
             build-system = [ pkgs.python3Packages.hatchling ];
             dependencies = with pkgs.python3Packages; [
               aiohttp
+              matplotlib
               python-telegram-bot
               # discord.py is optional at runtime; add it when using the discord messenger
             ] ++ pkgs.lib.optional (pkgs.python3Packages ? discordpy) pkgs.python3Packages.discordpy;
