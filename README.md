@@ -108,6 +108,24 @@ Besides the post-shot questionnaire, the bot answers commands (any messenger):
 /help     list commands
 ```
 
+## Smart plug cold start (optional)
+
+GaggiMate in standby still draws power, so many people cut it at a smart
+plug — which normally kills `/wake`. Give MATEbot the plug's on/off commands
+and `/wake` becomes a true cold start (plug on → wait for the machine to
+boot → brew mode → ready ping), while `/sleep` powers everything down:
+
+```bash
+# Tasmota (Nous A1T, Eightree, ...)
+MATEBOT_WAKE_HOOK='curl -sf "http://192.168.1.60/cm?cmnd=Power%20On"'
+MATEBOT_SLEEP_HOOK='curl -sf "http://192.168.1.60/cm?cmnd=Power%20Off"'
+
+# Shelly
+MATEBOT_WAKE_HOOK='curl -sf "http://192.168.1.60/relay/0?turn=on"'
+```
+
+Any shell command works (Home Assistant webhook, `tinytuya`, zigbee2mqtt…).
+
 ## Configuration
 
 Environment variables, or the same keys in `~/.config/matebot/config.toml`:

@@ -62,6 +62,16 @@
               type = lib.types.str;
               default = "/var/lib/matebot";
             };
+            wakeHook = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "Shell command that powers the machine's smart plug ON (used by /wake).";
+            };
+            sleepHook = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "Shell command that powers the smart plug OFF (used by /sleep).";
+            };
             minShotDuration = lib.mkOption { type = lib.types.int; default = 10; };
             ignoreProfiles = lib.mkOption {
               type = lib.types.str;
@@ -87,6 +97,10 @@
                 MATEBOT_STATE_DIR = cfg.stateDir;
                 MATEBOT_MIN_SHOT_S = toString cfg.minShotDuration;
                 MATEBOT_IGNORE_PROFILES = cfg.ignoreProfiles;
+              } // lib.optionalAttrs (cfg.wakeHook != "") {
+                MATEBOT_WAKE_HOOK = cfg.wakeHook;
+              } // lib.optionalAttrs (cfg.sleepHook != "") {
+                MATEBOT_SLEEP_HOOK = cfg.sleepHook;
               } // lib.optionalAttrs (cfg.dataRepo != null) {
                 MATEBOT_DATA_REPO = toString cfg.dataRepo;
                 MATEBOT_SYNC = "1";
