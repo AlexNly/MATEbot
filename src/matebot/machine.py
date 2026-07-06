@@ -125,6 +125,13 @@ class GaggiMateClient:
         finally:
             self._pending.pop(rid, None)
 
+    async def send_event(self, tp: str, **fields: Any) -> None:
+        """Fire-and-forget message for requests the firmware never answers
+        (e.g. ``req:change-mode`` — it acts but sends no response)."""
+        if self._ws is None or self._ws.closed:
+            raise MachineError("the machine looks powered off")
+        await self._ws.send_str(json.dumps({"tp": tp, **fields}))
+
     async def notes_save(self, shot_id: int, notes: dict[str, Any]) -> dict:
         """Write shot notes; lands in the web UI's "Shot Notes" panel."""
         payload = {"id": str(shot_id)}  # unpadded inside the payload
