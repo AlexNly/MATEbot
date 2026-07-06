@@ -26,6 +26,11 @@ class FakeClient:
         self.requests.append((tp, fields))
         return {"msg": "Ok"}
 
+    async def send_event(self, tp, **fields):
+        if not self.connected:
+            raise MachineError("the machine looks powered off")
+        self.requests.append((tp, fields))
+
 
 class FakeConvo:
     def __init__(self):

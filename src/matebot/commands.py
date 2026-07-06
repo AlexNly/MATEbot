@@ -70,12 +70,12 @@ class CommandRouter:
         await self.messenger.send(HELP)
 
     async def _cmd_wake(self) -> None:
-        await self.client.request("req:change-mode", mode=1)
+        await self.client.send_event("req:change-mode", mode=1)
         self._awaiting_ready = True
         await self.messenger.send("🔥 Waking the machine — I'll tell you when it's hot.")
 
     async def _cmd_sleep(self) -> None:
-        await self.client.request("req:change-mode", mode=0)
+        await self.client.send_event("req:change-mode", mode=0)
         self._awaiting_ready = False
         await self.messenger.send("😴 Machine is going to standby.")
 
