@@ -112,12 +112,12 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
 
             messenger = create_messenger(config)
 
-        def schedule_sync():
+        def schedule_sync(*, quiet: bool = False):
             if config.sync_enabled and config.data_repo:
                 asyncio.create_task(
                     sync_soon(
                         client, config.data_repo, messenger.send,
-                        site_title=config.site_title,
+                        site_title=config.site_title, state=state, quiet=quiet,
                     )
                 )
 
@@ -171,9 +171,20 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
 
             async def pump_shots():
                 import re as _re
+                import time as _time
+
+                last_frame_at = 0.0
 
                 async def tee(source):
+                    nonlocal last_frame_at
                     async for frame in source:
+                        now = _time.monotonic()
+                        gap = now - last_frame_at if last_frame_at else None
+                        last_frame_at = now
+                        if state.get("sync_pending") and (gap is None or gap > 60):
+                            log.info("machine is back; retrying pending journal sync")
+                            state.set("sync_pending", False)  # avoid re-trigger storms
+                            schedule_sync(quiet=True)
                         cache_frame(frame)
                         await router.on_frame(frame)
                         yield frame
