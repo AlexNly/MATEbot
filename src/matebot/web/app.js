@@ -265,18 +265,22 @@ function combinedChart(parent, t, phases, S, overlay) {
 
 /* ---- Shot playback: replay the shot in real time ---- */
 
+const ICON_PLAY = `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>`;
+const ICON_PAUSE = `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>`;
+const ICON_EXPAND = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>`;
+
 function attachPlayer(card, t, xMax, S, overlay) {
   const controls = document.createElement("div");
   controls.className = "player";
   controls.innerHTML = `
-    <button class="pbtn" id="play" title="Replay the shot">▶</button>
+    <button class="pbtn" id="play" title="Replay the shot" aria-label="Play">${ICON_PLAY}</button>
     <input type="range" id="scrub" min="0" max="${xMax}" step="0.05" value="${xMax}">
     <span class="ptime" id="ptime">${xMax.toFixed(1)}s</span>
     <select id="speed" title="Playback speed">
       <option value="1">1×</option><option value="2">2×</option>
       <option value="4">4×</option><option value="8">8×</option>
     </select>
-    <button class="pbtn" id="theater" title="Full screen">⛶</button>`;
+    <button class="pbtn" id="theater" title="Full screen" aria-label="Full screen">${ICON_EXPAND}</button>`;
   card.prepend(controls);
 
   const tiles = document.createElement("div");
@@ -333,7 +337,7 @@ function attachPlayer(card, t, xMax, S, overlay) {
   function stop() {
     if (raf) cancelAnimationFrame(raf);
     raf = null; lastTs = null;
-    playBtn.textContent = "▶";
+    playBtn.innerHTML = ICON_PLAY;
   }
 
   function tick(ts) {
@@ -354,7 +358,7 @@ function attachPlayer(card, t, xMax, S, overlay) {
   playBtn.addEventListener("click", () => {
     if (raf) { stop(); return; }
     if (playT >= xMax) playT = 0;
-    playBtn.textContent = "⏸";
+    playBtn.innerHTML = ICON_PAUSE;
     raf = requestAnimationFrame(tick);
   });
   $("#scrub").addEventListener("input", () => {
