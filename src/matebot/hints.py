@@ -1,6 +1,6 @@
 """Dial-in hints after a disappointing shot.
 
-The rules follow the dial-in guidance from modsmthng's Automatic Pro cheat
+The suggestions follow the dial-in guide from modsmthng's Automatic Pro cheat
 sheet (https://modsmthng.github.io/Automatic-Pro/v3/): adjust grind first,
 then ratio, then temperature — one variable at a time; sour points to
 under-extraction, bitter to over-extraction. Full credit to modsmthng.
@@ -8,7 +8,7 @@ under-extraction, bitter to over-extraction. Full credit to modsmthng.
 
 from __future__ import annotations
 
-CREDIT = "Rules from modsmthng's Automatic Pro cheat sheet — modsmthng.github.io/Automatic-Pro"
+CREDIT = "Guide: modsmthng's Automatic Pro cheat sheet, modsmthng.github.io/Automatic-Pro"
 
 
 def _ratio(notes: dict) -> float | None:

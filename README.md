@@ -167,7 +167,7 @@ support: contributions welcome.
 
 - [GaggiMate](https://gaggimate.eu) by jniebuhr — the machine controller this
   companion talks to.
-- The dial-in hint rules follow the
+- The dial-in hints follow the guide from
   [Automatic Pro cheat sheet](https://modsmthng.github.io/Automatic-Pro/) by
   **modsmthng**.
 
