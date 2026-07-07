@@ -13,7 +13,7 @@
           default = matebot;
           matebot = pkgs.python3Packages.buildPythonApplication {
             pname = "matebot";
-            version = "0.2.1";
+            version = "0.2.2";
             pyproject = true;
             src = self;
             build-system = [ pkgs.python3Packages.hatchling ];
