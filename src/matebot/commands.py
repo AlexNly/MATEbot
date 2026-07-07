@@ -26,7 +26,8 @@ HELP = (
     "/last — the last logged shot\n"
     "/fix — redo the questionnaire for the last shot\n"
     "/newbag <grams> [name] — start tracking a bean bag (optional feature)\n"
-    "/bag — how much is left in the bag\n"
+    "/bag — how much is left in the open bags\n"
+    "/tossbag [name] — close out a bag (emptied, binned, or gifted)\n"
     "/digest — your last 7 days in espresso\n"
     "/help — this list"
 )
@@ -198,6 +199,11 @@ class CommandRouter:
         from . import bags
 
         await self.messenger.send(bags.bag_status(self.state))
+
+    async def _cmd_tossbag(self) -> None:
+        from . import bags
+
+        await self.messenger.send(bags.toss_bag(self.state, " ".join(self._args) or None))
 
     async def _cmd_digest(self) -> None:
         text = await build_digest(self.client, self.config)

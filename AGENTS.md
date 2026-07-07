@@ -42,7 +42,7 @@ The decision tree:
    arrive within seconds of the shot ending.
 6. **Optional extras**, in ascending effort: journal repo + GitHub Pages
    (README "Publishing your journal"), dial-in hints (on by default), bean
-   bag tracking (`/newbag`), smart plug hooks for cold-start `/wake`
+   bag tracking (`/newbag`, multiple bags, `/tossbag`), smart plug hooks for cold-start `/wake`
    (README "Smart plug cold start").
 
 Common failure modes: token/chat id swapped or quoted wrong; bot and machine

@@ -168,3 +168,26 @@ def test_signoff_matches_time_of_day():
     assert "evening" in _signoff(19)
     assert "dreams" in _signoff(23)
     assert "dreams" in _signoff(2)
+
+
+@pytest.mark.asyncio
+async def test_bean_step_offers_open_bags(tmp_path):
+    from matebot.bags import open_bag
+
+    fm = FakeMessenger()
+    state = State(tmp_path / "state.json")
+    open_bag(state, 250, "Mondo Classico")
+    open_bag(state, 250, "Ethiopia Natural")
+    state.set("last_notes", {"beanType": "Mondo Classico"})
+    c = Conversation(fm, state, SaveRecorder())
+    await c.start_shot(70, "p", 30000, 0)
+    await answer(c, "g|70|r|4")
+    await answer(c, "g|70|bt|skip")
+    labels = [o.label for o in fm.last_options]
+    assert "🫘 Mondo Classico" in labels
+    assert "🫘 Ethiopia Natural" in labels
+    # no duplicate "Same as last: Mondo Classico" next to the bag button
+    assert not any("Same as last" in label for label in labels)
+    bag_option = next(o for o in fm.last_options if o.label == "🫘 Ethiopia Natural")
+    await c.handle_event(OptionSelected(bag_option.id))
+    assert c.pending.answers["beanType"] == "Ethiopia Natural"

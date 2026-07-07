@@ -188,6 +188,13 @@ class Conversation:
             ]
         options = []
         default = self._defaults().get(NOTE_KEYS[step])
+        if step == "bean":
+            from . import bags
+
+            for name in bags.open_bag_names(self.state)[:3]:
+                options.append(mk("bean", name, f"🫘 {name}"[:60]))
+                if name == default:
+                    default = None  # avoid a duplicate "same as last" button
         if step == "dout" and self.pending.volume_g:
             grams = f"{self.pending.volume_g:.1f}"
             options.append(mk("dout", grams, f"Use {grams} g"))
