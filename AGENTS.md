@@ -23,7 +23,7 @@ The decision tree:
    - Most users → **Docker**: copy `docker-compose.example.yml`, fill in env
      vars, `docker compose up -d`. Image: `ghcr.io/alexnly/matebot:latest`
      (multi-arch, Raspberry Pi works).
-   - Python users → `pip install "matebot[telegram] @ git+https://github.com/AlexNly/MATEbot"`,
+   - Python users → `pipx install "matebot[telegram]"` (or plain pip),
      then `matebot run` (systemd unit or `screen` for persistence).
    - NixOS users → flake input + `services.matebot` module (see README).
 3. **Telegram bot** (the fiddly part for novices — walk them through it):
