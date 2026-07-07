@@ -53,6 +53,7 @@ class TelegramMessenger(Messenger):
                 BotCommand("fix", "redo the last shot's log"),
                 BotCommand("bag", "how much is left in the bean bag"),
                 BotCommand("newbag", "start tracking a bean bag"),
+                BotCommand("tossbag", "close out a bag"),
                 BotCommand("help", "list commands"),
             ])
         await self.app.updater.start_polling(drop_pending_updates=True)
