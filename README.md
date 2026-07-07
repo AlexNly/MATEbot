@@ -14,7 +14,7 @@ straight back into GaggiMate's own Shot Notes, exactly as if you'd typed them
 into the web UI.
 
 <p align="center">
-  <img src="docs/screenshots/telegram-chat.png" width="420" alt="matebot asking for a shot rating on Telegram right after the shot finished">
+  <img src="https://raw.githubusercontent.com/AlexNly/MATEbot/main/docs/screenshots/telegram-chat.png" width="420" alt="matebot asking for a shot rating on Telegram right after the shot finished">
 </p>
 
 ## What it does
@@ -43,8 +43,8 @@ the familiar combined pressure/flow/temperature chart, phase markers, ratings
 and notes.
 
 <p align="center">
-  <img src="docs/screenshots/journal-list.png" width="49%" alt="Shot journal list with ratings, ratios and peak pressure">
-  <img src="docs/screenshots/journal-detail.png" width="49%" alt="Per-shot detail with combined pressure/flow/temperature chart">
+  <img src="https://raw.githubusercontent.com/AlexNly/MATEbot/main/docs/screenshots/journal-list.png" width="49%" alt="Shot journal list with ratings, ratios and peak pressure">
+  <img src="https://raw.githubusercontent.com/AlexNly/MATEbot/main/docs/screenshots/journal-detail.png" width="49%" alt="Per-shot detail with combined pressure/flow/temperature chart">
 </p>
 
 ## Install
@@ -67,7 +67,7 @@ A Pi Zero 2 W and a USB charger is the whole data center.
 ### pip
 
 ```bash
-pip install "matebot[telegram] @ git+https://github.com/AlexNly/matebot"
+pipx install "matebot[telegram]"   # or: pip install "matebot[telegram]"
 matebot run
 ```
 
