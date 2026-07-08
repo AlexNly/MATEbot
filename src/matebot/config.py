@@ -30,6 +30,7 @@ ENV_MAP = {
     "digest_enabled": "MATEBOT_DIGEST",
     "clean_every": "MATEBOT_CLEAN_EVERY",
     "water_warn_pct": "MATEBOT_WATER_WARN",
+    "autoheat_window": "MATEBOT_AUTOHEAT",
     "plots_enabled": "MATEBOT_PLOTS",
     "wake_hook": "MATEBOT_WAKE_HOOK",
     "sleep_hook": "MATEBOT_SLEEP_HOOK",
@@ -60,6 +61,8 @@ class Config:
     digest_enabled: bool = True  # weekly summary on Sunday evening
     clean_every: int = 40  # backflush reminder every N espresso shots; 0 = off
     water_warn_pct: int = 15  # warn when the tank drops below this percent; 0 = off
+    # e.g. "06:30-07:00": machine powered on in this window switches to brew, once a day
+    autoheat_window: str = ""
     plots_enabled: bool = True  # send the shot chart as a photo (needs matplotlib)
     wake_hook: str = ""  # shell command to power the machine's smart plug ON
     sleep_hook: str = ""  # shell command to power the smart plug OFF

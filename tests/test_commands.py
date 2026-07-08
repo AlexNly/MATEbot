@@ -209,3 +209,62 @@ async def test_ready_ping_mentions_low_tank(setup):
     state.set("water_warned", True)  # already warned; ping still mentions it
     await router.on_frame({"tp": "evt:status", "m": 1, "ct": 92.6, "tt": 93.0, "wl": 8})
     assert any("The tank is at 8%" in t for t in fm.sent)
+
+
+def test_in_window():
+    from matebot.commands import in_window
+
+    assert in_window("06:30-07:00", "06:30")
+    assert in_window("06:30-07:00", "06:59")
+    assert not in_window("06:30-07:00", "07:00")  # end exclusive
+    assert not in_window("06:30-07:00", "06:29")
+    assert not in_window("", "06:45")
+    assert not in_window("garbage", "06:45")
+
+
+@pytest.mark.asyncio
+async def test_autoheat_once_per_day(setup, monkeypatch):
+    router, client, state, convo, fm, cache = setup
+    router.config.autoheat_window = "06:30-07:00"
+
+    class FakeDT:
+        @staticmethod
+        def now():
+            import datetime as _dt
+
+            return _dt.datetime(2026, 7, 9, 6, 50)
+
+    monkeypatch.setattr("matebot.commands.datetime", FakeDT)
+    standby = {"tp": "evt:status", "m": 0, "ct": 22.0, "tt": 0}
+
+    await router.on_machine_online(standby)
+    assert client.requests == [("req:change-mode", {"mode": 1})]
+    assert any("Good morning" in t for t in fm.sent)
+
+    await router.on_machine_online(standby)  # second power-on same day: no-op
+    assert len(client.requests) == 1
+
+    # already brewing: never override
+    state.set("autoheat_date", None)
+    await router.on_machine_online({"tp": "evt:status", "m": 1, "ct": 90.0, "tt": 93.0})
+    assert len(client.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_autoheat_outside_window_or_disabled(setup, monkeypatch):
+    router, client, state, convo, fm, cache = setup
+
+    class FakeDT:
+        @staticmethod
+        def now():
+            import datetime as _dt
+
+            return _dt.datetime(2026, 7, 9, 9, 15)
+
+    monkeypatch.setattr("matebot.commands.datetime", FakeDT)
+    standby = {"tp": "evt:status", "m": 0, "ct": 22.0, "tt": 0}
+    router.config.autoheat_window = "06:30-07:00"
+    await router.on_machine_online(standby)   # 09:15: outside window
+    router.config.autoheat_window = ""
+    await router.on_machine_online(standby)   # disabled
+    assert client.requests == []

@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import datetime
 from typing import Any
 
 from .machine import MachineError
@@ -227,6 +228,32 @@ class CommandRouter:
                 text += f" The tank is at {wl}%, though."
             await self.messenger.send(text)
 
+    async def on_machine_online(self, frame: dict[str, Any]) -> None:
+        """Machine just (re)appeared: morning auto-heat, once per day.
+
+        The machine keeps startupMode=standby as a safety net; when it gets
+        powered on inside the configured window (plug timer, NFC scan, ...)
+        the bot flips it to brew. The machine's own standbyTimeout returns it
+        to standby if nobody shows up.
+        """
+        if not self.config.autoheat_window or frame.get("m") != 0:
+            return
+        if not in_window(self.config.autoheat_window, datetime.now().strftime("%H:%M")):
+            return
+        today = datetime.now().strftime("%Y-%m-%d")
+        if self.state.get("autoheat_date") == today:
+            return
+        self.state.set("autoheat_date", today)
+        try:
+            await self.client.send_event("req:change-mode", mode=1)
+        except MachineError:
+            return
+        self._awaiting_ready = True
+        await self.messenger.send(
+            "🌅 Good morning — the machine is on, switching it to brew. "
+            "I'll ping when it's hot."
+        )
+
     async def _check_water(self, frame: dict[str, Any]) -> None:
         """Warn once when the tank runs low; re-arm after a refill."""
         wl = frame.get("wl")
@@ -241,6 +268,15 @@ class CommandRouter:
             )
         elif warned and wl >= threshold + 10:
             self.state.set("water_warned", False)
+
+
+def in_window(window: str, now_hhmm: str) -> bool:
+    """True when now (HH:MM) lies inside "HH:MM-HH:MM" (end exclusive)."""
+    try:
+        start, end = (part.strip() for part in window.split("-", 1))
+        return start <= now_hhmm < end
+    except ValueError:
+        return False
 
 
 async def build_digest(client, config) -> str | None:

@@ -181,10 +181,12 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
                         now = _time.monotonic()
                         gap = now - last_frame_at if last_frame_at else None
                         last_frame_at = now
-                        if state.get("sync_pending") and (gap is None or gap > 60):
-                            log.info("machine is back; retrying pending journal sync")
-                            state.set("sync_pending", False)  # avoid re-trigger storms
-                            schedule_sync(quiet=True)
+                        if gap is None or gap > 60:
+                            await router.on_machine_online(frame)
+                            if state.get("sync_pending"):
+                                log.info("machine is back; retrying pending journal sync")
+                                state.set("sync_pending", False)  # avoid re-trigger storms
+                                schedule_sync(quiet=True)
                         cache_frame(frame)
                         await router.on_frame(frame)
                         yield frame
