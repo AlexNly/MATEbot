@@ -125,6 +125,8 @@ MATEBOT_WAKE_HOOK='curl -sf "http://192.168.1.60/relay/0?turn=on"'
 ```
 
 Any shell command works (Home Assistant webhook, `tinytuya`, zigbee2mqtt…).
+NixOS module users: write `%` as `%%` in the hook options — the values pass
+through a systemd unit, which treats single `%` as a specifier.
 
 ## Configuration
 
