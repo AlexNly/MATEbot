@@ -54,6 +54,7 @@ def setup(tmp_path):
 @pytest.mark.asyncio
 async def test_wake_and_ready_ping(setup):
     router, client, state, convo, fm, cache = setup
+    cache({"tp": "evt:status", "m": 0, "ct": 60.0, "tt": 0})  # machine online
     assert await router.handle("/wake")
     assert client.requests == [("req:change-mode", {"mode": 1})]
     assert "Waking" in fm.sent[-1]
@@ -75,11 +76,12 @@ async def test_sleep(setup):
 
 
 @pytest.mark.asyncio
-async def test_wake_with_machine_off(setup):
+async def test_wake_with_machine_off_arms_pending(setup):
     router, client, state, convo, fm, cache = setup
     client.connected = False
-    assert await router.handle("/wake")
-    assert "Can't reach the machine" in fm.sent[-1]
+    assert await router.handle("/wake")  # no hook configured, machine off
+    assert "looks powered off" in fm.sent[-1]
+    assert state.get("pending_wake_until", 0) > 0
 
 
 @pytest.mark.asyncio
@@ -135,13 +137,47 @@ async def test_wake_hook_runs_and_cold_start_waits(tmp_path, setup):
 
 
 @pytest.mark.asyncio
-async def test_wake_hook_failure_aborts(setup):
+async def test_wake_hook_failure_still_arms_pending(setup, monkeypatch):
     router, client, state, convo, fm, cache = setup
     router.config.wake_hook = "exit 1"
-    cache({"tp": "evt:status", "m": 0, "ct": 60.0, "tt": 0})
-    await router.handle("/wake")
+
+    async def no_sleep(_):
+        return None
+
+    monkeypatch.setattr("matebot.commands.asyncio.sleep", no_sleep)
+    await router.handle("/wake")  # machine offline, hook broken
     assert client.requests == []
-    assert any("hook failed" in t for t in fm.sent)
+    assert any("Couldn't reach the plug" in t for t in fm.sent)
+    assert state.get("pending_wake_until", 0) > 0
+
+    # machine gets powered manually -> the armed wake still heats it
+    await router.on_machine_online({"tp": "evt:status", "m": 0, "ct": 25.0, "tt": 0})
+    assert client.requests == [("req:change-mode", {"mode": 1})]
+    assert any("Machine is up" in t for t in fm.sent)
+    # consumed: a second appearance does nothing
+    await router.on_machine_online({"tp": "evt:status", "m": 0, "ct": 25.0, "tt": 0})
+    assert len(client.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_wake_cold_start_event_driven(setup):
+    router, client, state, convo, fm, cache = setup
+    router.config.wake_hook = "true"
+    await router.handle("/wake")  # machine offline, hook fine
+    assert client.requests == []  # nothing sent inline
+    assert any("moment the machine is up" in t for t in fm.sent)
+    await router.on_machine_online({"tp": "evt:status", "m": 0, "ct": 25.0, "tt": 0})
+    assert client.requests == [("req:change-mode", {"mode": 1})]
+
+
+@pytest.mark.asyncio
+async def test_pending_wake_expires(setup):
+    import time as _time
+
+    router, client, state, convo, fm, cache = setup
+    state.set("pending_wake_until", _time.time() - 1)  # already expired
+    await router.on_machine_online({"tp": "evt:status", "m": 0, "ct": 25.0, "tt": 0})
+    assert client.requests == []
 
 
 @pytest.mark.asyncio
@@ -200,6 +236,7 @@ async def test_low_water_disabled(setup):
 @pytest.mark.asyncio
 async def test_ready_ping_mentions_low_tank(setup):
     router, client, state, convo, fm, cache = setup
+    cache({"tp": "evt:status", "m": 0, "ct": 60.0, "tt": 0})  # machine online
     await router.handle("/wake")
     await router.on_frame({"tp": "evt:status", "m": 1, "ct": 92.5, "tt": 93.0, "wl": 40})
     ready = [t for t in fm.sent if "ready when you are" in t]
