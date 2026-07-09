@@ -50,6 +50,7 @@ class GaggiMateClient:
         self._session: aiohttp.ClientSession | None = None
         self._ws: aiohttp.ClientWebSocketResponse | None = None
         self._pending: dict[str, asyncio.Future] = {}
+        self._nudge = asyncio.Event()
 
     async def __aenter__(self) -> GaggiMateClient:
         self._session = aiohttp.ClientSession(timeout=self._timeout)
@@ -109,8 +110,20 @@ class GaggiMateClient:
                     if not fut.done():
                         fut.set_exception(MachineError("websocket dropped"))
                 self._pending.clear()
-            await asyncio.sleep(backoff + random.uniform(0, backoff / 4))
-            backoff = min(backoff * 2, max_backoff)
+            try:
+                # a nudge (e.g. /wake just powered the plug) retries immediately
+                await asyncio.wait_for(
+                    self._nudge.wait(), backoff + random.uniform(0, backoff / 4)
+                )
+                backoff = 1.0
+            except TimeoutError:
+                backoff = min(backoff * 2, max_backoff)
+            finally:
+                self._nudge.clear()
+
+    def nudge(self) -> None:
+        """Skip the current reconnect backoff and retry now."""
+        self._nudge.set()
 
     async def request(self, tp: str, *, timeout: float = 20.0, **fields: Any) -> dict:
         """Send a rid-correlated request over the live WS connection."""
