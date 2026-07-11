@@ -305,3 +305,48 @@ async def test_autoheat_outside_window_or_disabled(setup, monkeypatch):
     router.config.autoheat_window = ""
     await router.on_machine_online(standby)   # disabled
     assert client.requests == []
+
+
+@pytest.mark.asyncio
+async def test_brew_enforcer_resends_until_confirmed(setup, monkeypatch):
+    router, client, state, convo, fm, cache = setup
+    clock = {"t": 1000.0}
+    monkeypatch.setattr("matebot.commands.time.monotonic", lambda: clock["t"])
+
+    cache({"tp": "evt:status", "m": 0, "ct": 60.0, "tt": 0})
+    await router.handle("/wake")  # machine online -> first send + enforcer armed
+    assert client.requests == [("req:change-mode", {"mode": 1})]
+
+    standby = {"tp": "evt:status", "m": 0, "ct": 25.0, "tt": 0}
+    await router.on_frame(standby)  # 0s later: too soon to resend
+    assert len(client.requests) == 1
+
+    clock["t"] += 9  # command was swallowed during boot; resend kicks in
+    await router.on_frame(standby)
+    assert len(client.requests) == 2
+
+    await router.on_frame({"tp": "evt:status", "m": 1, "ct": 30.0, "tt": 93.0})  # confirmed
+    clock["t"] += 9
+    await router.on_frame({"tp": "evt:status", "m": 1, "ct": 40.0, "tt": 93.0})
+    assert len(client.requests) == 2  # no more resends after confirmation
+
+    # ready ping still works at temperature
+    await router.on_frame({"tp": "evt:status", "m": 1, "ct": 92.4, "tt": 93.0})
+    assert any("ready when you are" in t for t in fm.sent)
+
+
+@pytest.mark.asyncio
+async def test_brew_enforcer_gives_up_loudly(setup, monkeypatch):
+    router, client, state, convo, fm, cache = setup
+    clock = {"t": 1000.0}
+    monkeypatch.setattr("matebot.commands.time.monotonic", lambda: clock["t"])
+
+    cache({"tp": "evt:status", "m": 0, "ct": 60.0, "tt": 0})
+    await router.handle("/wake")
+    clock["t"] += 91  # machine never leaves standby
+    await router.on_frame({"tp": "evt:status", "m": 0, "ct": 25.0, "tt": 0})
+    assert any("won't switch to brew" in t for t in fm.sent)
+    # enforcer disarmed: nothing further happens
+    clock["t"] += 9
+    await router.on_frame({"tp": "evt:status", "m": 0, "ct": 25.0, "tt": 0})
+    assert len(client.requests) == 1

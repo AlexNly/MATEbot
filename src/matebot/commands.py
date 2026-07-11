@@ -44,6 +44,8 @@ class CommandRouter:
         self.config = config
         self.latest_frame = latest_frame  # () -> (frame dict | None, age seconds)
         self._awaiting_ready = False
+        self._ensure_brew_until = 0.0  # keep resending change-mode until brew is observed
+        self._last_brew_send = 0.0
         self._args: list[str] = []
 
     # ------------------------------------------------------------- dispatch
@@ -92,6 +94,20 @@ class CommandRouter:
                 await asyncio.sleep(3 * (attempt + 1))
         return False
 
+    async def _start_brew(self) -> None:
+        """Send change-mode and keep enforcing it via the status stream.
+
+        The firmware never acknowledges mode changes, and a command sent
+        seconds after boot is silently swallowed while the controller still
+        applies startupMode. So: fire, then verify against frames and resend
+        until the machine actually reports brew.
+        """
+        await self.client.send_event("req:change-mode", mode=1)
+        log.info("brew requested; enforcing until confirmed")
+        self._last_brew_send = time.monotonic()
+        self._ensure_brew_until = self._last_brew_send + 90
+        self._awaiting_ready = True
+
     async def _machine_online(self) -> bool:
         _, age = self.latest_frame()
         return age < 20
@@ -102,8 +118,7 @@ class CommandRouter:
         if self.config.wake_hook:
             hook_ok = await self._run_hook(self.config.wake_hook, "wake")
         if online:
-            await self.client.send_event("req:change-mode", mode=1)
-            self._awaiting_ready = True
+            await self._start_brew()
             await self.messenger.send("🔥 Waking the machine — I'll tell you when it's hot.")
             return
         # Machine is off: arm the wake and act the moment it appears — no
@@ -134,6 +149,7 @@ class CommandRouter:
             if not self.config.sleep_hook:
                 raise
         self._awaiting_ready = False
+        self._ensure_brew_until = 0.0
         if self.config.sleep_hook:
             await asyncio.sleep(3)  # let the machine settle into standby first
             if await self._run_hook(self.config.sleep_hook, "sleep"):
@@ -237,9 +253,10 @@ class CommandRouter:
     # ------------------------------------------------------------- frames
 
     async def on_frame(self, frame: dict[str, Any]) -> None:
-        """Called for every status frame: ready ping after /wake, tank watch."""
+        """Called for every status frame: brew enforcement, ready ping, tank watch."""
         if frame.get("tp") != "evt:status":
             return
+        await self._enforce_brew(frame)
         await self._check_water(frame)
         if not self._awaiting_ready:
             return
@@ -263,10 +280,9 @@ class CommandRouter:
         if frame.get("m") == 0 and self.state.get("pending_wake_until", 0) > time.time():
             self.state.set("pending_wake_until", 0)
             try:
-                await self.client.send_event("req:change-mode", mode=1)
+                await self._start_brew()
             except MachineError:
                 return
-            self._awaiting_ready = True
             await self.messenger.send("🔥 Machine is up — switching to brew. I'll ping when hot.")
             return
         if not self.config.autoheat_window or frame.get("m") != 0:
@@ -278,14 +294,35 @@ class CommandRouter:
             return
         self.state.set("autoheat_date", today)
         try:
-            await self.client.send_event("req:change-mode", mode=1)
+            await self._start_brew()
         except MachineError:
             return
-        self._awaiting_ready = True
         await self.messenger.send(
             "🌅 Good morning — the machine is on, switching it to brew. "
             "I'll ping when it's hot."
         )
+
+    async def _enforce_brew(self, frame: dict[str, Any]) -> None:
+        if not self._ensure_brew_until:
+            return
+        now = time.monotonic()
+        if frame.get("m") == 1:
+            log.info("brew mode confirmed")
+            self._ensure_brew_until = 0.0
+        elif now >= self._ensure_brew_until:
+            self._ensure_brew_until = 0.0
+            self._awaiting_ready = False
+            await self.messenger.send(
+                "⚠️ I kept asking, but the machine won't switch to brew — "
+                "check it (or tap the screen)."
+            )
+        elif frame.get("m") == 0 and now - self._last_brew_send >= 8:
+            self._last_brew_send = now
+            log.info("machine still in standby; resending change-mode")
+            try:
+                await self.client.send_event("req:change-mode", mode=1)
+            except MachineError:
+                pass
 
     async def _check_water(self, frame: dict[str, Any]) -> None:
         """Warn once when the tank runs low; re-arm after a refill."""
