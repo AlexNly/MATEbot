@@ -46,6 +46,7 @@ def test_positive_offset_trims_clip(repo, monkeypatch):
     out = asyncio.run(render.render_reel(repo, 4))
     args = calls[0]
     assert args[args.index("-ss") + 1] == "0.60"
+    assert args[args.index("-t") + 1] == f"{GEOM['t_end']:.2f}"  # ends at the x-axis end
     assert "adelay=0|0" in args[args.index("-filter_complex") + 1]
     assert out.read_bytes() == b"reel"
     out.unlink()
