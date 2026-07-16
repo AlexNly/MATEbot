@@ -92,7 +92,7 @@ function renderDetail(id, shot, compareId, compare) {
   if (shot.video) {
     const holder = document.createElement("div");
     holder.className = "chart-card video-card";
-    holder.innerHTML = `<video src="${esc(shot.video)}" playsinline muted preload="auto"></video>
+    holder.innerHTML = `<video src="${esc(shot.video)}"${shot.poster ? ` poster="${esc(shot.poster)}"` : ""} playsinline muted preload="auto"></video>
       <button class="pbtn vunmute" title="Sound">🔇</button>`;
     charts.appendChild(holder);
     VIDEO = holder.querySelector("video");
