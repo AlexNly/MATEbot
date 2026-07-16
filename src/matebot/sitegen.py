@@ -74,6 +74,23 @@ def _load_notes(path: Path) -> dict | None:
         return None
 
 
+def _video_info(shots_dir: Path, out_dir: Path, sid: str) -> dict:
+    """Copy the shot's video into the site (if any) and return payload fields."""
+    mp4 = shots_dir / f"{sid}.mp4"
+    if not mp4.exists():
+        return {}
+    dest = out_dir / "video" / f"{sid}.mp4"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if not dest.exists() or dest.stat().st_mtime < mp4.stat().st_mtime:
+        dest.write_bytes(mp4.read_bytes())
+    offset = 0.0
+    try:
+        offset = float(json.loads((shots_dir / f"{sid}.video.json").read_text())["offset"])
+    except (OSError, ValueError, KeyError):
+        pass
+    return {"video": f"video/{sid}.mp4", "video_offset": offset}
+
+
 def generate(shots_dir: str | Path, out_dir: str | Path, *, title: str = "Shot Journal") -> int:
     """Build the site; returns the number of shots included."""
     shots_dir, out_dir = Path(shots_dir), Path(out_dir)
@@ -89,6 +106,7 @@ def generate(shots_dir: str | Path, out_dir: str | Path, *, title: str = "Shot J
         sid = slog_path.stem
         notes = _load_notes(slog_path.with_suffix(".json"))
         payload = _shot_payload(shot, notes)
+        payload.update(_video_info(shots_dir, out_dir, sid))
         (out_dir / "shots" / f"{sid}.json").write_text(
             json.dumps(payload, separators=(",", ":"))
         )
@@ -102,6 +120,7 @@ def generate(shots_dir: str | Path, out_dir: str | Path, *, title: str = "Shot J
                 "final_g": shot.final_weight_g,
                 "peak_bar": max(cp) if cp else 0,
                 "rating": (notes or {}).get("rating") or 0,
+                "has_video": (shots_dir / f"{sid}.mp4").exists(),
                 "bean": (notes or {}).get("beanType", ""),
                 "ratio": (notes or {}).get("ratio", ""),
                 "taste": (notes or {}).get("balanceTaste", ""),

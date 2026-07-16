@@ -350,3 +350,22 @@ async def test_brew_enforcer_gives_up_loudly(setup, monkeypatch):
     clock["t"] += 9
     await router.on_frame({"tp": "evt:status", "m": 0, "ct": 25.0, "tt": 0})
     assert len(client.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_vsync_adjusts_latest_video_offset(setup, tmp_path):
+    from matebot import video as videomod
+
+    router, client, state, convo, fm, cache = setup
+    router.config.data_repo = str(tmp_path)
+    await router.handle("/vsync +0.5")
+    assert "No shot videos yet" in fm.sent[-1]
+
+    (tmp_path / "shots").mkdir()
+    (tmp_path / "shots" / "000080.mp4").write_bytes(b"v")
+    videomod.set_offset(tmp_path, 80, -1.0)
+    await router.handle("/vsync +0.5")
+    assert videomod.get_offset(tmp_path, 80) == -0.5
+    assert "#80" in fm.sent[-1]
+    await router.handle("/vsync -0.25")
+    assert videomod.get_offset(tmp_path, 80) == -0.75

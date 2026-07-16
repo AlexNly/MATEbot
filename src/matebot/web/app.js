@@ -88,6 +88,21 @@ function renderDetail(id, shot, compareId, compare) {
 
   const charts = $("#charts");
   charts.innerHTML = "";
+  VIDEO = null;
+  if (shot.video) {
+    const holder = document.createElement("div");
+    holder.className = "chart-card video-card";
+    holder.innerHTML = `<video src="${esc(shot.video)}" playsinline muted preload="metadata"></video>
+      <button class="pbtn vunmute" title="Sound">🔇</button>`;
+    charts.appendChild(holder);
+    VIDEO = holder.querySelector("video");
+    VIDEO_OFFSET = shot.video_offset || 0;
+    const mute = holder.querySelector(".vunmute");
+    mute.addEventListener("click", () => {
+      VIDEO.muted = !VIDEO.muted;
+      mute.textContent = VIDEO.muted ? "🔇" : "🔊";
+    });
+  }
   const t = shot.series.t;
   const S = (key) => shot.series[key] && shot.series[key].some(v => v !== 0) ? shot.series[key] : null;
 
@@ -131,6 +146,16 @@ function rgba(hex, alpha) {
 }
 
 let CHART = null;
+let VIDEO = null;
+let VIDEO_OFFSET = 0;
+
+function videoSeek(time) {
+  if (!VIDEO) return;
+  const vt = time + VIDEO_OFFSET;
+  if (VIDEO.readyState >= 1 && Math.abs(VIDEO.currentTime - vt) > 0.25) {
+    VIDEO.currentTime = Math.max(0, vt);
+  }
+}
 
 function combinedChart(parent, t, phases, S, overlay) {
   if (!t || t.length < 2 || typeof Chart === "undefined") return;
@@ -321,6 +346,7 @@ function attachPlayer(card, t, xMax, S, overlay) {
     ph.display = playing || time < xMax;
     ph.xMin = ph.xMax = time;
     CHART.update("none");
+    if (!playing) videoSeek(time);
     const i = idxAt(time);
     for (const [k] of TILES) {
       const el = $(`#tile-${k}`);
@@ -338,6 +364,7 @@ function attachPlayer(card, t, xMax, S, overlay) {
     if (raf) cancelAnimationFrame(raf);
     raf = null; lastTs = null;
     playBtn.innerHTML = ICON_PLAY;
+    VIDEO?.pause();
   }
 
   function tick(ts) {
@@ -350,6 +377,7 @@ function attachPlayer(card, t, xMax, S, overlay) {
         return;
       }
       renderAt(playT, true);
+      videoSeek(playT);
     }
     lastTs = ts;
     raf = requestAnimationFrame(tick);
@@ -359,7 +387,15 @@ function attachPlayer(card, t, xMax, S, overlay) {
     if (raf) { stop(); return; }
     if (playT >= xMax) playT = 0;
     playBtn.innerHTML = ICON_PAUSE;
+    if (VIDEO) {
+      VIDEO.playbackRate = Number($("#speed").value);
+      videoSeek(playT);
+      VIDEO.play().catch(() => {});
+    }
     raf = requestAnimationFrame(tick);
+  });
+  $("#speed").addEventListener("change", () => {
+    if (VIDEO) VIDEO.playbackRate = Number($("#speed").value);
   });
   $("#scrub").addEventListener("input", () => {
     stop();

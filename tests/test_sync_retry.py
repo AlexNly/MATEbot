@@ -16,7 +16,7 @@ class Notify:
 
 @pytest.mark.asyncio
 async def test_machine_offline_sets_pending_flag(tmp_path, monkeypatch):
-    async def boom(client, repo, site_title="x"):
+    async def boom(client, repo, site_title="x", video_keep=15):
         raise aiohttp.ClientConnectionError("machine off")
 
     monkeypatch.setattr(sync_mod, "sync", boom)
@@ -33,7 +33,7 @@ async def test_machine_offline_sets_pending_flag(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_success_clears_pending_flag(tmp_path, monkeypatch):
-    async def ok(client, repo, site_title="x"):
+    async def ok(client, repo, site_title="x", video_keep=15):
         return True
 
     monkeypatch.setattr(sync_mod, "sync", ok)

@@ -30,6 +30,7 @@ HELP = (
     "/newbag <grams> [name] — start tracking a bean bag (optional feature)\n"
     "/bag — how much is left in the open bags\n"
     "/tossbag [name] — close out a bag (emptied, binned, or gifted)\n"
+    "/vsync <±seconds> — nudge the latest shot video's sync (e.g. /vsync +0.5)\n"
     "/digest — your last 7 days in espresso\n"
     "/help — this list"
 )
@@ -245,6 +246,28 @@ class CommandRouter:
         from . import bags
 
         await self.messenger.send(bags.toss_bag(self.state, " ".join(self._args) or None))
+
+    async def _cmd_vsync(self) -> None:
+        from . import video
+
+        if not self.config.data_repo:
+            await self.messenger.send("No journal repo configured — nothing to sync videos in.")
+            return
+        shot = video.latest_video_shot(self.config.data_repo)
+        if shot is None:
+            await self.messenger.send("No shot videos yet.")
+            return
+        try:
+            delta = float(self._args[0].replace("+", "")) if self._args else 0.0
+        except ValueError:
+            await self.messenger.send("Usage: /vsync <±seconds> — e.g. /vsync +0.5 or /vsync -1")
+            return
+        current = video.get_offset(self.config.data_repo, shot) or 0.0
+        video.set_offset(self.config.data_repo, shot, current + delta)
+        await self.messenger.send(
+            f"🎬 Shot #{shot} video offset: {current:+.2f}s → {current + delta:+.2f}s. "
+            "Journal updates on the next sync."
+        )
 
     async def _cmd_digest(self) -> None:
         text = await build_digest(self.client, self.config)

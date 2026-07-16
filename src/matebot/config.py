@@ -31,6 +31,7 @@ ENV_MAP = {
     "clean_every": "MATEBOT_CLEAN_EVERY",
     "water_warn_pct": "MATEBOT_WATER_WARN",
     "autoheat_window": "MATEBOT_AUTOHEAT",
+    "video_keep": "MATEBOT_VIDEO_KEEP",
     "plots_enabled": "MATEBOT_PLOTS",
     "wake_hook": "MATEBOT_WAKE_HOOK",
     "sleep_hook": "MATEBOT_SLEEP_HOOK",
@@ -63,6 +64,7 @@ class Config:
     water_warn_pct: int = 15  # warn when the tank drops below this percent; 0 = off
     # e.g. "06:30-07:00": machine powered on in this window switches to brew, once a day
     autoheat_window: str = ""
+    video_keep: int = 15  # newest N shot videos kept in the journal; 0 = keep all
     plots_enabled: bool = True  # send the shot chart as a photo (needs matplotlib)
     wake_hook: str = ""  # shell command to power the machine's smart plug ON
     sleep_hook: str = ""  # shell command to power the smart plug OFF
@@ -83,7 +85,7 @@ class Config:
                 continue
             if f.name == "min_shot_s":
                 value = float(value)
-            elif f.name in ("clean_every", "water_warn_pct"):
+            elif f.name in ("clean_every", "water_warn_pct", "video_keep"):
                 value = int(value)
             elif f.name in ("sync_enabled", "hints_enabled", "digest_enabled", "plots_enabled"):
                 value = str(value).lower() in ("1", "true", "yes", "on")
