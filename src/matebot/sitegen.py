@@ -93,7 +93,8 @@ def _video_info(shots_dir: Path, out_dir: Path, sid: str) -> dict:
     info = {"video": f"video/{sid}.mp4", "video_offset": offset}
     # poster frame: phones don't decode a frame until play, showing black
     poster = out_dir / "video" / f"{sid}.jpg"
-    if (not poster.exists() or poster.stat().st_mtime < mp4.stat().st_mtime) and shutil.which("ffmpeg"):
+    stale = not poster.exists() or poster.stat().st_mtime < mp4.stat().st_mtime
+    if stale and shutil.which("ffmpeg"):
         proc = subprocess.run(
             ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", "0.5",
              "-i", str(mp4), "-frames:v", "1", "-vf", "scale=640:-2", str(poster)],
