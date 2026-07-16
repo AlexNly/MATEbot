@@ -43,7 +43,9 @@ The decision tree:
 6. **Optional extras**, in ascending effort: journal repo + GitHub Pages
    (README "Publishing your journal"), dial-in hints (on by default), bean
    bag tracking (`/newbag`, multiple bags, `/tossbag`), smart plug hooks for cold-start `/wake`
-   (README "Smart plug cold start").
+   (README "Smart plug cold start"), shot-video camera module (README
+   "Camera module" — MATEBOT_CAMERA=1, needs ffmpeg + HTTPS in front of the
+   camera page; getUserMedia refuses plain HTTP).
 
 Common failure modes: token/chat id swapped or quoted wrong; bot and machine
 on different networks/VLANs; machine powered off at a dumb power strip;

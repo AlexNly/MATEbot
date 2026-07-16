@@ -32,6 +32,9 @@ ENV_MAP = {
     "water_warn_pct": "MATEBOT_WATER_WARN",
     "autoheat_window": "MATEBOT_AUTOHEAT",
     "video_keep": "MATEBOT_VIDEO_KEEP",
+    "camera_enabled": "MATEBOT_CAMERA",
+    "camera_port": "MATEBOT_CAMERA_PORT",
+    "camera_offset": "MATEBOT_CAMERA_OFFSET",
     "plots_enabled": "MATEBOT_PLOTS",
     "wake_hook": "MATEBOT_WAKE_HOOK",
     "sleep_hook": "MATEBOT_SLEEP_HOOK",
@@ -65,6 +68,9 @@ class Config:
     # e.g. "06:30-07:00": machine powered on in this window switches to brew, once a day
     autoheat_window: str = ""
     video_keep: int = 15  # newest N shot videos kept in the journal; 0 = keep all
+    camera_enabled: bool = False  # opt-in: serve the phone-camera page + record shots
+    camera_port: int = 8877
+    camera_offset: float = -1.0  # shot t=0 relative to video t=0 (detection+stream latency)
     plots_enabled: bool = True  # send the shot chart as a photo (needs matplotlib)
     wake_hook: str = ""  # shell command to power the machine's smart plug ON
     sleep_hook: str = ""  # shell command to power the smart plug OFF
@@ -83,11 +89,12 @@ class Config:
                 value = env
             if value is None:
                 continue
-            if f.name == "min_shot_s":
+            if f.name in ("min_shot_s", "camera_offset"):
                 value = float(value)
-            elif f.name in ("clean_every", "water_warn_pct", "video_keep"):
+            elif f.name in ("clean_every", "water_warn_pct", "video_keep", "camera_port"):
                 value = int(value)
-            elif f.name in ("sync_enabled", "hints_enabled", "digest_enabled", "plots_enabled"):
+            elif f.name in ("sync_enabled", "hints_enabled", "digest_enabled", "plots_enabled",
+                            "camera_enabled"):
                 value = str(value).lower() in ("1", "true", "yes", "on")
             kwargs[f.name] = value
         config = cls(**kwargs)
