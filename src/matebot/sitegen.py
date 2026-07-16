@@ -11,6 +11,8 @@ from __future__ import annotations
 import importlib.resources
 import json
 import logging
+import shutil
+import subprocess
 from pathlib import Path
 
 from .slog import Shot, SlogError, parse_slog
@@ -88,7 +90,20 @@ def _video_info(shots_dir: Path, out_dir: Path, sid: str) -> dict:
         offset = float(json.loads((shots_dir / f"{sid}.video.json").read_text())["offset"])
     except (OSError, ValueError, KeyError):
         pass
-    return {"video": f"video/{sid}.mp4", "video_offset": offset}
+    info = {"video": f"video/{sid}.mp4", "video_offset": offset}
+    # poster frame: phones don't decode a frame until play, showing black
+    poster = out_dir / "video" / f"{sid}.jpg"
+    if (not poster.exists() or poster.stat().st_mtime < mp4.stat().st_mtime) and shutil.which("ffmpeg"):
+        proc = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", "0.5",
+             "-i", str(mp4), "-frames:v", "1", "-vf", "scale=640:-2", str(poster)],
+            capture_output=True,
+        )
+        if proc.returncode != 0:
+            poster.unlink(missing_ok=True)
+    if poster.exists():
+        info["poster"] = f"video/{sid}.jpg"
+    return info
 
 
 def generate(shots_dir: str | Path, out_dir: str | Path, *, title: str = "Shot Journal") -> int:
