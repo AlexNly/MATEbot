@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "matebot"
-version = "0.3.0"
+version = "0.3.1"
 description = "The proactive companion for GaggiMate espresso machines: post-shot logging bot, .slog decoder, shot-journal site generator"
 readme = "README.md"
 license = "MIT"

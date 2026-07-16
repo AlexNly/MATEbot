@@ -26,7 +26,6 @@ log = logging.getLogger(__name__)
 WIDTH = 720
 CHART_H = 406
 PLAYHEAD = "0xF0561D"  # GaggiMate orange
-TAIL_S = 2.0
 
 
 class RenderError(Exception):
@@ -61,7 +60,7 @@ async def render_reel(repo: str | Path, shot_id: int, *, title: str | None = Non
     delay = max(0.0, -offset)  # video starts this long after chart t=0
     trim = max(0.0, offset)  # positive offset: drop the clip's head instead
     dur = geom["t_end"]  # animate across the actual data range
-    total = dur + TAIL_S
+    total = dur  # end exactly when the playhead reaches the end of the x axis
 
     # scale axis geometry from the rendered PNG to the reel's chart panel
     sx, sy = WIDTH / geom["img_w"], CHART_H / geom["img_h"]

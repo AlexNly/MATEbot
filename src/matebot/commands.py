@@ -268,6 +268,18 @@ class CommandRouter:
             f"🎬 Shot #{shot} video offset: {current:+.2f}s → {current + delta:+.2f}s. "
             "Journal updates on the next sync."
         )
+        try:
+            from .render import RenderError, render_reel
+
+            reel = await render_reel(self.config.data_repo, shot, title=f"Shot #{shot}")
+            try:
+                await self.messenger.send_video(
+                    reel.read_bytes(), f"🎬 Shot #{shot} @ {current + delta:+.2f}s"
+                )
+            finally:
+                reel.unlink(missing_ok=True)
+        except RenderError as exc:
+            log.info("no reel re-render for shot %06d: %s", shot, exc)
 
     async def _cmd_digest(self) -> None:
         text = await build_digest(self.client, self.config)
