@@ -13,7 +13,7 @@
           default = matebot;
           matebot = pkgs.python3Packages.buildPythonApplication {
             pname = "matebot";
-            version = "0.2.2";
+            version = "0.3.0";
             pyproject = true;
             src = self;
             build-system = [ pkgs.python3Packages.hatchling ];
@@ -90,7 +90,7 @@
               wantedBy = [ "multi-user.target" ];
               after = [ "network-online.target" ];
               wants = [ "network-online.target" ];
-              path = [ pkgs.git pkgs.openssh ];
+              path = [ pkgs.git pkgs.openssh pkgs.ffmpeg-headless ];
               environment = {
                 MATEBOT_MACHINE_HOST = cfg.machineHost;
                 MATEBOT_MESSENGER = cfg.messenger;
