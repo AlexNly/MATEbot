@@ -128,6 +128,28 @@ Any shell command works (Home Assistant webhook, `tinytuya`, zigbee2mqtt…).
 NixOS module users: write `%` as `%%` in the hook options — the values pass
 through a systemd unit, which treats single `%` as a specifier.
 
+## Camera module (optional): shot videos synced with the charts
+
+Opt in with `MATEBOT_CAMERA=1` and MATEbot serves a phone-camera page on
+`MATEBOT_CAMERA_PORT` (default 8877). Open it on a phone near the machine,
+allow camera access, and leave the page open — recording starts and stops
+automatically with each shot. Clips are transcoded (720p, with audio),
+committed to the journal repo, and the shot page plays them in sync with the
+curves (scrub the chart, the video follows).
+
+**HTTPS is required** — browsers only grant camera access on secure pages.
+MATEbot itself serves plain HTTP; put it behind whatever TLS you have:
+
+- a reverse proxy with certificates (nginx/caddy/traefik), e.g.
+  `matebot.example.com` → `127.0.0.1:8877` (WebSocket support needed)
+- or zero-config on a tailnet: `tailscale serve https / http://127.0.0.1:8877`
+
+Sync calibration: detection and stream latency mean the video usually starts
+~1 s after the true shot start. `MATEBOT_CAMERA_OFFSET` (default `-1.0`)
+corrects this globally; watch one replay and nudge per shot with
+`/vsync +0.5` if needed. Videos rotate out after `MATEBOT_VIDEO_KEEP` shots
+(git history keeps every clip recoverable).
+
 ## Configuration
 
 Environment variables, or the same keys in `~/.config/matebot/config.toml`:

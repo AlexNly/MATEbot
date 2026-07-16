@@ -150,6 +150,52 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
         convo = Conversation(messenger, state, save_notes)
         cache_frame, latest_frame = make_frame_cache()
         router = CommandRouter(client, state, convo, messenger, config, latest_frame)
+
+        camera = None
+        pending_clip: dict = {"path": None, "ts": 0.0}
+        attach_lock = asyncio.Lock()
+
+        async def try_attach_clip(shot_id: int | None = None) -> None:
+            """Rendezvous: a finished clip and a resolved shot id arrive in
+            either order; whichever side is second completes the attach."""
+            import time as _time
+
+            from .video import VideoError, attach_video, get_offset
+
+            async with attach_lock:
+                clip = pending_clip["path"]
+                if clip is None or _time.monotonic() - pending_clip["ts"] > 300:
+                    return
+                sid = shot_id if shot_id is not None else state.get("last_shot_id")
+                if not sid or get_offset(config.data_repo, sid) is not None:
+                    return  # no shot yet, or it already has a video
+                pending_clip["path"] = None
+                try:
+                    await attach_video(config.data_repo, sid, clip,
+                                       offset=config.camera_offset)
+                    log.info("camera clip attached to shot %06d", sid)
+                    schedule_sync(quiet=True)
+                except VideoError as exc:
+                    log.warning("clip attach failed: %s", exc)
+                    await messenger.send(f"🎬 Couldn't process the shot video: {exc}")
+                finally:
+                    pathlib.Path(clip).unlink(missing_ok=True)
+
+        if config.camera_enabled and config.data_repo:
+            import shutil as _shutil
+            import time as _time
+
+            from .camera import CameraServer
+
+            async def on_clip(webm_path):
+                keep = pathlib.Path(config.state_dir) / "pending_clip.webm"
+                _shutil.copy(webm_path, keep)
+                pending_clip["path"] = str(keep)
+                pending_clip["ts"] = _time.monotonic()
+                await try_attach_clip()
+
+            camera = CameraServer(config.camera_port, on_clip)
+            await camera.start()
         # messenger APIs can be flaky at boot; retry instead of crash-looping
         for attempt in range(8):
             try:
@@ -179,12 +225,25 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
 
                 last_frame_at = 0.0
 
+                shot_active = False
+
                 async def tee(source):
-                    nonlocal last_frame_at
+                    nonlocal last_frame_at, shot_active
                     async for frame in source:
                         now = _time.monotonic()
                         gap = now - last_frame_at if last_frame_at else None
                         last_frame_at = now
+                        if camera is not None and frame.get("tp") == "evt:status":
+                            active = (
+                                frame.get("m") == 1
+                                and (frame.get("process") or {}).get("a") == 1
+                                and not _re.search(config.ignore_profiles, frame.get("p") or "")
+                            )
+                            if active and not shot_active:
+                                await camera.shot_started()
+                            elif shot_active and not active:
+                                asyncio.create_task(camera.shot_ended())
+                            shot_active = active
                         if gap is None or gap > 60:
                             await router.on_machine_online(frame)
                             if state.get("sync_pending"):
@@ -253,6 +312,7 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
                         )
                     except Exception:  # noqa: BLE001 - keep watching even if messaging fails
                         log.exception("questionnaire start failed (state kept for resume)")
+                    await try_attach_clip(shot.entry.id)
                     schedule_sync()  # archive the .slog right away
 
             async def weekly_digest():
@@ -285,6 +345,8 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
                 if exc:
                     raise exc
         finally:
+            if camera is not None:
+                await camera.stop()
             await messenger.stop()
     return 0
 

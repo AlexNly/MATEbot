@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>MATEbot Cam</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎥</text></svg>">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { background: #101c2e; color: #f5efe6; font: 16px system-ui, sans-serif;
+         min-height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 14px 16px; display: flex; align-items: center; gap: 10px; }
+  h1 { font-size: 18px; font-weight: 650; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: #666; }
+  .dot.armed { background: #1baf7a; box-shadow: 0 0 8px #1baf7a; }
+  .dot.rec { background: #e34948; box-shadow: 0 0 10px #e34948; animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0.4; } }
+  #status { color: #c3c2b7; font-size: 14px; margin-left: auto; }
+  video { flex: 1; width: 100%; object-fit: cover; background: #000; }
+  footer { padding: 12px 16px; color: #898781; font-size: 13px; text-align: center; }
+  button {
+    position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%);
+    padding: 14px 28px; font: 600 17px system-ui; color: #101c2e;
+    background: #f5efe6; border: none; border-radius: 14px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎥 MATEbot Cam</h1>
+  <div class="dot" id="dot"></div>
+  <span id="status">starting…</span>
+</header>
+<video id="preview" playsinline muted autoplay></video>
+<button id="enable">Enable camera</button>
+<footer>Keep this page open and pointed at the machine.<br>Recording starts automatically with each shot.</footer>
+<script>
+"use strict";
+const statusEl = document.getElementById("status");
+const dot = document.getElementById("dot");
+const preview = document.getElementById("preview");
+const enableBtn = document.getElementById("enable");
+let stream = null, recorder = null, ws = null, wakeLock = null;
+
+function setState(state, text) {
+  dot.className = "dot " + state;
+  statusEl.textContent = text;
+}
+
+async function enableCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: true,
+    });
+  } catch (e) {
+    setState("", "camera denied: " + e.name);
+    return;
+  }
+  preview.srcObject = stream;
+  enableBtn.style.display = "none";
+  try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) { /* optional */ }
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState === "visible" && wakeLock !== null) {
+      try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) { /* optional */ }
+    }
+  });
+  connect();
+}
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => setState("armed", "armed — waiting for a shot");
+  ws.onclose = () => { setState("", "reconnecting…"); stopRec(); setTimeout(connect, 2000); };
+  ws.onmessage = ev => {
+    const msg = JSON.parse(ev.data);
+    if (msg.cmd === "start") startRec();
+    if (msg.cmd === "stop") stopRec();
+  };
+}
+
+function startRec() {
+  if (!stream || recorder) return;
+  const mime = ["video/mp4", "video/webm;codecs=vp8,opus", "video/webm"]
+    .find(m => MediaRecorder.isTypeSupported(m)) || "";
+  recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2_500_000 });
+  recorder.ondataavailable = ev => {
+    if (ev.data.size > 0 && ws && ws.readyState === 1) {
+      ev.data.arrayBuffer().then(buffer => ws.send(buffer));
+    }
+  };
+  recorder.onstop = () => { recorder = null; setState("armed", "armed — waiting for a shot"); };
+  recorder.start(1000);
+  setState("rec", "recording shot…");
+}
+
+function stopRec() {
+  if (recorder && recorder.state !== "inactive") recorder.stop();
+}
+
+enableBtn.addEventListener("click", enableCamera);
+setState("", "tap to enable the camera");
+</script>
+</body>
+</html>
