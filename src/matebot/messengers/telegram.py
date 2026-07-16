@@ -106,6 +106,20 @@ class TelegramMessenger(Messenger):
                 await asyncio.sleep(2 * (attempt + 1))
         raise last_exc
 
+    async def send_video(self, video: bytes, caption: str) -> str:
+        last_exc = None
+        for attempt in range(5):
+            try:
+                msg = await self.app.bot.send_video(
+                    self.chat_id, video=video, caption=caption, supports_streaming=True
+                )
+                return str(msg.message_id)
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                log.warning("video send attempt %d failed: %s", attempt + 1, exc)
+                await asyncio.sleep(2 * (attempt + 1))
+        raise last_exc
+
     async def edit(self, ref: str, text: str, options: list[Option] | None = None) -> None:
         try:
             await self.app.bot.edit_message_text(

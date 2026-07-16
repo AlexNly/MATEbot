@@ -26,6 +26,14 @@ COLORS = {
 
 
 def render_shot_png(shot: Shot, *, title: str | None = None) -> bytes:
+    return render_shot_chart(shot, title=title)[0]
+
+
+def render_shot_chart(shot: Shot, *, title: str | None = None) -> tuple[bytes, dict]:
+    """Render the chart and return ``(png_bytes, geometry)``.
+
+    ``geometry`` holds the pixel bounds of the data area (see render.py).
+    """
     import matplotlib
 
     matplotlib.use("Agg")
@@ -96,5 +104,20 @@ def render_shot_png(shot: Shot, *, title: str | None = None) -> bytes:
     fig.tight_layout(rect=(0, 0.08, 1, 1))
     buf = io.BytesIO()
     fig.savefig(buf, format="png")
+
+    # pixel geometry of the data area (needed by render.py to animate a wipe
+    # that tracks the x axis, not the image edges)
+    fig.canvas.draw()
+    width, height = fig.canvas.get_width_height()
+    end = t[-1] if t else 1.0
+    x0 = float(ax_temp.transData.transform((0, 0))[0])
+    x1 = float(ax_temp.transData.transform((end, 0))[0])
+    bbox = ax_temp.get_window_extent()
+    geometry = {
+        "img_w": width, "img_h": height,
+        "t_end": end, "x0": x0, "x1": x1,
+        "y_top": float(height - bbox.y1), "plot_h": float(bbox.y1 - bbox.y0),
+    }
+
     plt.close(fig)
-    return buf.getvalue()
+    return buf.getvalue(), geometry

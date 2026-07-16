@@ -174,12 +174,41 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
                     await attach_video(config.data_repo, sid, clip,
                                        offset=config.camera_offset)
                     log.info("camera clip attached to shot %06d", sid)
-                    schedule_sync(quiet=True)
+                    asyncio.create_task(post_video(sid))
                 except VideoError as exc:
                     log.warning("clip attach failed: %s", exc)
                     await messenger.send(f"🎬 Couldn't process the shot video: {exc}")
                 finally:
                     pathlib.Path(clip).unlink(missing_ok=True)
+
+        async def post_video(sid: int) -> None:
+            """After a clip attaches: auto-calibrate its sync offset from the
+            pump's audio onset, then render + send the shot reel."""
+            try:
+                from .calibrate import calibrate_offset
+                from .video import set_offset
+
+                offset = await calibrate_offset(config.data_repo, sid)
+                if offset is not None:
+                    set_offset(config.data_repo, sid, offset)
+                    log.info("shot %06d video offset auto-calibrated to %+.2fs", sid, offset)
+            except Exception as exc:  # noqa: BLE001 - calibration is best-effort
+                log.warning("offset calibration failed: %s", exc)
+            schedule_sync(quiet=True)
+            if not config.reel_enabled:
+                return
+            try:
+                from .render import RenderError, render_reel
+
+                reel = await render_reel(config.data_repo, sid, title=f"Shot #{sid}")
+                try:
+                    await messenger.send_video(reel.read_bytes(), f"🎬 Shot #{sid}")
+                finally:
+                    reel.unlink(missing_ok=True)
+            except RenderError as exc:
+                log.info("no reel for shot %06d: %s", sid, exc)
+            except Exception as exc:  # noqa: BLE001 - never let the reel kill the bot
+                log.warning("reel for shot %06d failed: %s", sid, exc)
 
         if config.camera_enabled and config.data_repo:
             import shutil as _shutil

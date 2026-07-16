@@ -35,6 +35,7 @@ ENV_MAP = {
     "camera_enabled": "MATEBOT_CAMERA",
     "camera_port": "MATEBOT_CAMERA_PORT",
     "camera_offset": "MATEBOT_CAMERA_OFFSET",
+    "reel_enabled": "MATEBOT_REEL",
     "plots_enabled": "MATEBOT_PLOTS",
     "wake_hook": "MATEBOT_WAKE_HOOK",
     "sleep_hook": "MATEBOT_SLEEP_HOOK",
@@ -71,6 +72,7 @@ class Config:
     camera_enabled: bool = False  # opt-in: serve the phone-camera page + record shots
     camera_port: int = 8877
     camera_offset: float = -1.0  # shot t=0 relative to video t=0 (detection+stream latency)
+    reel_enabled: bool = True  # send a composed clip+chart reel after camera shots
     plots_enabled: bool = True  # send the shot chart as a photo (needs matplotlib)
     wake_hook: str = ""  # shell command to power the machine's smart plug ON
     sleep_hook: str = ""  # shell command to power the smart plug OFF
@@ -94,7 +96,7 @@ class Config:
             elif f.name in ("clean_every", "water_warn_pct", "video_keep", "camera_port"):
                 value = int(value)
             elif f.name in ("sync_enabled", "hints_enabled", "digest_enabled", "plots_enabled",
-                            "camera_enabled"):
+                            "camera_enabled", "reel_enabled"):
                 value = str(value).lower() in ("1", "true", "yes", "on")
             kwargs[f.name] = value
         config = cls(**kwargs)

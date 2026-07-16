@@ -45,7 +45,10 @@ The decision tree:
    bag tracking (`/newbag`, multiple bags, `/tossbag`), smart plug hooks for cold-start `/wake`
    (README "Smart plug cold start"), shot-video camera module (README
    "Camera module" — MATEBOT_CAMERA=1, needs ffmpeg + HTTPS in front of the
-   camera page; getUserMedia refuses plain HTTP).
+   camera page; getUserMedia refuses plain HTTP). Camera shots auto-calibrate
+   their chart-sync offset from the pump's audio onset (calibrate.py) and get
+   a rendered clip+chart "shot reel" sent to the chat (render.py,
+   MATEBOT_REEL=0 to disable; needs matplotlib).
 
 Common failure modes: token/chat id swapped or quoted wrong; bot and machine
 on different networks/VLANs; machine powered off at a dumb power strip;

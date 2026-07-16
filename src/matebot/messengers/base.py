@@ -53,6 +53,11 @@ class Messenger(ABC):
         back to the caption text."""
         return await self.send(caption)
 
+    async def send_video(self, video: bytes, caption: str) -> str:
+        """Send a video with caption; backends without video support fall
+        back to the caption text."""
+        return await self.send(caption)
+
     @abstractmethod
     def events(self) -> AsyncIterator[Event]:
         """User interactions, in order. Runs until stop()."""

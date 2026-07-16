@@ -144,11 +144,17 @@ MATEbot itself serves plain HTTP; put it behind whatever TLS you have:
   `matebot.example.com` → `127.0.0.1:8877` (WebSocket support needed)
 - or zero-config on a tailnet: `tailscale serve https / http://127.0.0.1:8877`
 
-Sync calibration: detection and stream latency mean the video usually starts
-~1 s after the true shot start. `MATEBOT_CAMERA_OFFSET` (default `-1.0`)
-corrects this globally; watch one replay and nudge per shot with
-`/vsync +0.5` if needed. Videos rotate out after `MATEBOT_VIDEO_KEEP` shots
-(git history keeps every clip recoverable).
+Sync is calibrated automatically: the pump is loud, so MATEbot aligns its
+audio onset in the clip with the pump command in the shot data and writes the
+exact per-shot offset. If a clip has no usable audio the fallback is
+`MATEBOT_CAMERA_OFFSET` (default `-1.0`), and `/vsync +0.5` still nudges any
+shot manually. Videos rotate out after `MATEBOT_VIDEO_KEEP` shots (git
+history keeps every clip recoverable).
+
+After each recorded shot MATEbot also renders a **shot reel** — a portrait
+video with the clip on top and the chart animating below it, playhead
+tracking the x axis — and sends it to the chat (ready for sharing). Disable
+with `MATEBOT_REEL=0`; it needs ffmpeg and the `plots` extra (matplotlib).
 
 ## Configuration
 
