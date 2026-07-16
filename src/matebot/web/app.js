@@ -92,7 +92,7 @@ function renderDetail(id, shot, compareId, compare) {
   if (shot.video) {
     const holder = document.createElement("div");
     holder.className = "chart-card video-card";
-    holder.innerHTML = `<video src="${esc(shot.video)}" playsinline muted preload="metadata"></video>
+    holder.innerHTML = `<video src="${esc(shot.video)}" playsinline muted preload="auto"></video>
       <button class="pbtn vunmute" title="Sound">🔇</button>`;
     charts.appendChild(holder);
     VIDEO = holder.querySelector("video");
@@ -171,6 +171,7 @@ function videoFollow(time, speed) {
   if (VIDEO.paused) {
     if (VIDEO.ended || VIDEO.currentTime >= (VIDEO.duration || Infinity)) return;
     VIDEO.play().catch(() => {});
+    return; // no drift correction until playback actually starts
   }
   const drift = VIDEO.currentTime - vt;
   if (Math.abs(drift) > 1) {
@@ -182,6 +183,15 @@ function videoFollow(time, speed) {
     const nudge = Math.max(-0.15, Math.min(0.15, drift));
     VIDEO.playbackRate = Math.max(0.25, Math.min(4, speed * (1 - nudge)));
   }
+}
+
+// True while the playing video is waiting for data; the chart clock holds so
+// the curves never run ahead of a buffering video.
+function videoBuffering(time) {
+  if (!VIDEO || VIDEO.error || VIDEO.ended || VIDEO.paused) return false;
+  const vt = time + VIDEO_OFFSET;
+  if (vt < 0 || vt >= (VIDEO.duration || Infinity)) return false;
+  return VIDEO.readyState < 3 || VIDEO.seeking;
 }
 
 function combinedChart(parent, t, phases, S, overlay) {
@@ -396,7 +406,7 @@ function attachPlayer(card, t, xMax, S, overlay) {
 
   function tick(ts) {
     if (lastTs != null) {
-      playT += ((ts - lastTs) / 1000) * Number($("#speed").value);
+      if (!videoBuffering(playT)) playT += ((ts - lastTs) / 1000) * Number($("#speed").value);
       if (playT >= xMax) {
         playT = xMax;
         renderAt(playT, false);
