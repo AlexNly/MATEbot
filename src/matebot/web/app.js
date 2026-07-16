@@ -150,10 +150,37 @@ let VIDEO = null;
 let VIDEO_OFFSET = 0;
 
 function videoSeek(time) {
-  if (!VIDEO) return;
+  if (!VIDEO || VIDEO.seeking) return;
   const vt = time + VIDEO_OFFSET;
   if (VIDEO.readyState >= 1 && Math.abs(VIDEO.currentTime - vt) > 0.25) {
     VIDEO.currentTime = Math.max(0, vt);
+  }
+}
+
+// While playing, never hard-seek on small drift: on phones a seek stalls the
+// video past the drift threshold again, which cascades into a seek storm
+// (~1 fps). Converge by nudging playbackRate; hard-seek only past 1 s.
+function videoFollow(time, speed) {
+  if (!VIDEO) return;
+  const vt = time + VIDEO_OFFSET;
+  if (vt < 0) {
+    // footage starts later than the chart; hold the first frame until then
+    if (!VIDEO.paused) VIDEO.pause();
+    return;
+  }
+  if (VIDEO.paused) {
+    if (VIDEO.ended || VIDEO.currentTime >= (VIDEO.duration || Infinity)) return;
+    VIDEO.play().catch(() => {});
+  }
+  const drift = VIDEO.currentTime - vt;
+  if (Math.abs(drift) > 1) {
+    if (!VIDEO.seeking) {
+      VIDEO.currentTime = Math.max(0, vt);
+      VIDEO.playbackRate = speed;
+    }
+  } else {
+    const nudge = Math.max(-0.15, Math.min(0.15, drift));
+    VIDEO.playbackRate = Math.max(0.25, Math.min(4, speed * (1 - nudge)));
   }
 }
 
@@ -377,7 +404,7 @@ function attachPlayer(card, t, xMax, S, overlay) {
         return;
       }
       renderAt(playT, true);
-      videoSeek(playT);
+      videoFollow(playT, Number($("#speed").value));
     }
     lastTs = ts;
     raf = requestAnimationFrame(tick);
