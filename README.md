@@ -156,6 +156,14 @@ video with the clip on top and the chart animating below it, playhead
 tracking the x axis — and sends it to the chat (ready for sharing). Disable
 with `MATEBOT_REEL=0`; it needs ffmpeg and the `plots` extra (matplotlib).
 
+## Troubleshooting
+
+**"That didn't work" on /newbag (or bags/defaults reset on restart)** - the
+state dir isn't writable. In Docker the container runs as uid 1000, but a
+bind-mounted `./data` created by Docker belongs to root: fix with
+`mkdir -p data && sudo chown -R 1000:1000 data` and restart. The bot logs the
+exact path at startup when this happens.
+
 ## Configuration
 
 Environment variables, or the same keys in `~/.config/matebot/config.toml`:

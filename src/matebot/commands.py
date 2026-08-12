@@ -66,9 +66,10 @@ class CommandRouter:
             await handler()
         except MachineError as exc:
             await self.messenger.send(f"⚠️ Can't reach the machine ({exc}). Is it plugged in?")
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             log.exception("command %s failed", cmd)
-            await self.messenger.send("⚠️ That didn't work — check the logs.")
+            detail = f"{type(exc).__name__}: {exc}"[:150]
+            await self.messenger.send(f"⚠️ That didn't work — {detail}")
         return True
 
     # ------------------------------------------------------------- commands
