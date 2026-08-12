@@ -95,6 +95,12 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
 
     log = logging.getLogger("matebot")
     state = State(pathlib.Path(config.state_dir) / "state.json")
+    if not state.persistent:
+        log.error(
+            "state dir %s is not writable - bags/defaults/resume won't survive "
+            "restarts (Docker: chown -R 1000:1000 the mounted data dir)",
+            config.state_dir,
+        )
 
     async with GaggiMateClient(config.machine_host) as client:
         if dry_run:
