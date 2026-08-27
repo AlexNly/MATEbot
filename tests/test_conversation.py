@@ -123,14 +123,81 @@ async def test_stale_and_malformed_options_ignored(convo):
 
 
 @pytest.mark.asyncio
-async def test_supersede_saves_partial_notes(convo):
+async def test_second_shot_queues_and_follows(convo):
     c, fm, save = convo
     await c.start_shot(62, "p", 30000, 0)
     await answer(c, "g|62|r|2")
-    await c.start_shot(63, "p", 31000, 0)  # new shot arrives mid-questionnaire
-    assert save.calls[0][0] == 62
-    assert save.calls[0][1]["rating"] == 2
-    assert c.pending.shot_id == 63
+    await c.start_shot(63, "q", 31000, 0)  # new shot arrives mid-questionnaire
+    # first shot is still the one being logged; second is announced and queued
+    assert c.pending.shot_id == 62 and c.pending.step == "bt"
+    assert [q.shot_id for q in c.queue] == [63]
+    assert "Shot #63 done" in fm.sent[-1][0] and "after #62" in fm.sent[-1][0]
+    assert save.calls == []
+
+    for step in ("bt", "bean", "grind", "din", "dout", "txt"):
+        await answer(c, f"g|62|{step}|skip")
+    assert save.calls == [(62, {"rating": 2})]
+    # ...and #63 starts automatically
+    assert c.pending.shot_id == 63 and c.queue == []
+    assert any("Next up: shot #63" in t for t, _ in fm.sent)
+    assert [o.id for o in fm.last_options] == [f"g|63|r|{n}" for n in range(1, 6)]
+
+
+@pytest.mark.asyncio
+async def test_skip_moves_to_next(convo):
+    c, fm, save = convo
+    await c.start_shot(70, "p", 30000, 0)
+    await c.start_shot(71, "p", 30000, 0)
+    await c.start_shot(72, "p", 30000, 0)
+    assert "+1 more" in fm.sent[-1][0]
+    assert await c.skip()  # nothing answered -> nothing saved
+    assert save.calls == [] and "skipped" in fm.sent[-3][0]
+    assert c.pending.shot_id == 71 and [q.shot_id for q in c.queue] == [72]
+    await answer(c, "g|71|r|4")
+    assert await c.skip()  # partial answers are still saved
+    assert save.calls == [(71, {"rating": 4})]
+    assert c.pending.shot_id == 72
+    for step in ("r", "bt", "bean", "grind", "din", "dout", "txt"):
+        await answer(c, f"g|72|{step}|skip")
+    assert c.pending is None and not await c.skip()
+
+
+@pytest.mark.asyncio
+async def test_fix_jumps_queue_and_parks_current(convo):
+    c, fm, save = convo
+    await c.start_shot(80, "p", 30000, 0)
+    await answer(c, "g|80|r|3")
+    await c.start_shot(81, "p", 30000, 0)
+    await c.start_shot(79, "old", 25000, 0, now=True)  # /fix 79
+    assert c.pending.shot_id == 79
+    assert [q.shot_id for q in c.queue] == [80, 81]
+    assert "#80 is parked" in fm.sent[-2][0]
+    for step in ("r", "bt", "bean", "grind", "din", "dout", "txt"):
+        await answer(c, f"g|79|{step}|skip")
+    # back to #80 with its rating intact, on the step it was parked at
+    assert c.pending.shot_id == 80 and c.pending.step == "bt"
+    assert c.pending.answers == {"rating": "3"}
+    assert any("Picking up where we left off" in t for t, _ in fm.sent)
+    # /fix on the shot in progress restarts it instead of queueing a duplicate
+    await c.start_shot(80, "p", 30000, 0, now=True)
+    assert c.pending.shot_id == 80 and c.pending.step == "r" and c.pending.answers == {}
+    assert [q.shot_id for q in c.queue] == [81]
+
+
+@pytest.mark.asyncio
+async def test_queue_survives_restart(tmp_path):
+    fm = FakeMessenger()
+    save = SaveRecorder()
+    state_path = tmp_path / "state.json"
+    c = Conversation(fm, State(state_path), save)
+    await c.start_shot(90, "p", 30000, 0)
+    await c.start_shot(91, "p", 30000, 0)
+
+    fm2 = FakeMessenger()
+    c2 = Conversation(fm2, State(state_path), save)
+    assert c2.pending.shot_id == 90 and [q.shot_id for q in c2.queue] == [91]
+    await c2.resume_if_pending()
+    assert "1 more shot queued" in fm2.sent[0][0]
 
 
 @pytest.mark.asyncio

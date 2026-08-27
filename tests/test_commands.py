@@ -35,9 +35,14 @@ class FakeClient:
 class FakeConvo:
     def __init__(self):
         self.started = []
+        self.pending = None
 
-    async def start_shot(self, *args, photo=None):
-        self.started.append(args)
+    async def start_shot(self, *args, photo=None, now=False):
+        self.started.append((args, now))
+
+    async def skip(self):
+        had, self.pending = self.pending, None
+        return had is not None
 
 
 @pytest.fixture
@@ -107,7 +112,7 @@ async def test_last_and_fix(setup):
     assert "Shot #60" in fm.sent[-1] and "#000060" in fm.sent[-1]
 
     await router.handle("/fix")
-    assert convo.started == [(60, "Direct Lever v3", 16000, 35.8)]
+    assert convo.started == [((60, "Direct Lever v3", 16000, 35.8), True)]
 
 
 @pytest.mark.asyncio
@@ -369,3 +374,45 @@ async def test_vsync_adjusts_latest_video_offset(setup, tmp_path):
     assert "#80" in fm.sent[-1]
     await router.handle("/vsync -0.25")
     assert videomod.get_offset(tmp_path, 80) == -0.75
+
+
+class _Entry:
+    def __init__(self, id, name="Lever", duration_ms=28000, volume_g=36.0, deleted=False):
+        self.id, self.profile_name, self.duration_ms = id, name, duration_ms
+        self.volume_g, self.deleted = volume_g, deleted
+
+
+class _Index:
+    def __init__(self, *entries):
+        self.entries = list(entries)
+
+
+@pytest.mark.asyncio
+async def test_skip_command(setup):
+    router, client, state, convo, fm, cache = setup
+    assert await router.handle("/skip")
+    assert "Nothing to skip" in fm.sent[-1]
+    convo.pending = object()
+    assert await router.handle("/skip")
+    assert convo.pending is None and len(fm.sent) == 1  # convo does the talking
+
+
+@pytest.mark.asyncio
+async def test_fix_by_shot_id(setup):
+    router, client, state, convo, fm, cache = setup
+    state.set("last_shot", {"shot_id": 63, "profile": "p", "duration_ms": 30000, "volume_g": 0})
+
+    async def fetch_index():
+        return _Index(_Entry(61, deleted=True), _Entry(62))
+
+    client.fetch_index = fetch_index
+    assert await router.handle("/fix")
+    assert convo.started[-1] == ((63, "p", 30000, 0), True)
+    assert await router.handle("/fix 62")
+    assert convo.started[-1] == ((62, "Lever", 28000, 36.0), True)
+    assert await router.handle("/fix #63")  # last shot: no index lookup needed
+    assert convo.started[-1][0][0] == 63
+    assert await router.handle("/fix 61")
+    assert "No shot #61" in fm.sent[-1] and len(convo.started) == 3
+    assert await router.handle("/fix abc")
+    assert "Usage" in fm.sent[-1]

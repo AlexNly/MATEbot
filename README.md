@@ -97,6 +97,10 @@ services.matebot = {
 
 ## Chat commands
 
+Back-to-back shots are fine: the second one is announced right away and its
+questionnaire starts as soon as the first is logged (or skipped) — nothing is
+dropped, and `/fix <id>` reopens any shot later.
+
 Besides the post-shot questionnaire, the bot answers commands (any messenger):
 
 ```
@@ -104,7 +108,8 @@ Besides the post-shot questionnaire, the bot answers commands (any messenger):
 /sleep    back to standby
 /status   mode, boiler temperature, water level
 /last     the last logged shot (with journal link if configured)
-/fix      redo the questionnaire for the last shot
+/fix      redo the questionnaire for the last shot (or a given one: /fix 62)
+/skip     drop the questionnaire in progress, move on to the next queued shot
 /help     list commands
 ```
 
