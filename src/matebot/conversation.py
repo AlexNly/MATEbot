@@ -1,8 +1,9 @@
 """The post-shot questionnaire — messenger-agnostic.
 
-One questionnaire at a time (it's a home espresso machine, not a fleet).
-A new shot supersedes a pending questionnaire: whatever was already answered
-is saved (partial notes beat no notes), then the new one starts.
+One questionnaire at a time (it's a home espresso machine, not a fleet), but
+shots queue up: pull two back to back and the second one is announced right
+away, then waits its turn — its questionnaire starts the moment the first is
+logged (or /skip'ped). Nothing is dropped, and /fix <id> reopens any shot.
 
 Flow: RATING → TASTE → BEAN → GRIND → DOSE_IN → DOSE_OUT → NOTES → save.
 Answers land in the machine's own "Shot Notes" (via req:history:notes:save),
@@ -71,6 +72,13 @@ class PendingShot:
     step: str = "r"
     answers: dict | None = None
 
+    @property
+    def headline(self) -> str:
+        return (
+            f"{self.profile} · {_fmt_duration(self.duration_ms)}"
+            + (f" · {self.volume_g:.1f} g in the cup" if self.volume_g else "")
+        )
+
     def to_dict(self) -> dict:
         return {
             "shot_id": self.shot_id,
@@ -107,36 +115,65 @@ class Conversation:
         restored = state.get("pending")
         if restored:
             self.pending = PendingShot.from_dict(restored)
+        # shots waiting for their questionnaire, oldest first
+        self.queue: list[PendingShot] = [
+            PendingShot.from_dict(d) for d in state.get("queue") or []
+        ]
         self._msg_ref: str | None = None
 
     # ------------------------------------------------------------- shots
 
     async def start_shot(
         self, shot_id: int, profile: str, duration_ms: int, volume_g: float,
-        photo: bytes | None = None,
+        photo: bytes | None = None, *, now: bool = False,
     ) -> None:
-        if self.pending is not None:
-            await self._finish(superseded_by=shot_id)
-        self.pending = PendingShot(shot_id, profile, duration_ms, volume_g, answers={})
+        """A shot finished: start its questionnaire, or queue it behind the
+        one in progress. ``now`` (used by /fix) jumps the queue instead — the
+        questionnaire in progress is parked at the front, answers intact."""
+        shot = PendingShot(shot_id, profile, duration_ms, volume_g, answers={})
+        self.queue = [q for q in self.queue if q.shot_id != shot_id]
+        parked = None
+        if self.pending is not None and self.pending.shot_id != shot_id:
+            if not now:
+                self.queue.append(shot)
+                self._persist()
+                more = len(self.queue) - 1
+                await self._send(
+                    f"☕ Shot #{shot_id} done!\n{shot.headline}\n\n"
+                    f"Queued — I'll ask about it right after #{self.pending.shot_id}"
+                    + (f" (+{more} more)" if more else "")
+                    + ". /skip drops the current one.",
+                    photo,
+                )
+                return
+            parked = self.pending
+            self.queue.insert(0, parked)
+        self.pending = shot
         self._persist()
-        summary = (
-            f"☕ Shot #{shot_id} done!\n"
-            f"{profile} · {_fmt_duration(duration_ms)}"
-            + (f" · {volume_g:.1f} g in the cup" if volume_g else "")
-            + "\n\nLet's log it before you forget:"
-        )
-        if photo:
-            await self.messenger.send_photo(photo, summary)
-        else:
-            await self.messenger.send(summary)
+        text = f"☕ Shot #{shot_id} done!\n{shot.headline}\n\nLet's log it before you forget:"
+        if parked is not None:
+            text += f"\n(#{parked.shot_id} is parked — we'll get back to it right after.)"
+        await self._send(text, photo)
         await self._prompt()
+
+    async def skip(self) -> bool:
+        """/skip: drop the questionnaire in progress and move on to the next
+        queued shot. Whatever was already answered is still saved."""
+        if self.pending is None:
+            return False
+        await self._finish(skipped=True)
+        return True
 
     async def resume_if_pending(self) -> None:
         if self.pending is not None:
-            await self.messenger.send(
+            text = (
                 f"☕ Shot #{self.pending.shot_id} is still waiting for its log — "
                 "where were we?"
             )
+            if self.queue:
+                n = len(self.queue)
+                text += f" ({n} more shot{'s' if n > 1 else ''} queued behind it.)"
+            await self.messenger.send(text)
             await self._prompt()
 
     # ------------------------------------------------------------- events
@@ -204,6 +241,12 @@ class Conversation:
         options.append(mk(step, "skip", "skip"))
         return options
 
+    async def _send(self, text: str, photo: bytes | None = None) -> None:
+        if photo:
+            await self.messenger.send_photo(photo, text)
+        else:
+            await self.messenger.send(text)
+
     async def _prompt(self) -> None:
         step = self.pending.step
         text = PROMPTS[step]
@@ -225,7 +268,7 @@ class Conversation:
 
     # ------------------------------------------------------------- finish
 
-    async def _finish(self, superseded_by: int | None = None) -> None:
+    async def _finish(self, skipped: bool = False) -> None:
         pending, self.pending = self.pending, None
         self._persist()
         answers = dict(pending.answers or {})
@@ -238,10 +281,9 @@ class Conversation:
         except ValueError:
             pass
 
-        if superseded_by is not None and not answers:
-            await self.messenger.send(
-                f"⏭ Shot #{pending.shot_id} skipped (new shot #{superseded_by})."
-            )
+        if skipped and not answers:
+            await self.messenger.send(f"⏭ Shot #{pending.shot_id} skipped.")
+            await self._next()
             return
 
         ok = await self.save_notes(pending.shot_id, answers) if answers else True
@@ -252,7 +294,7 @@ class Conversation:
             last.update({k: v for k, v in answers.items() if k in remembered})
             self.state.set("last_notes", last)
             stars = "★" * int(answers.get("rating", 0))
-            suffix = f" (superseded by #{superseded_by})" if superseded_by else ""
+            suffix = " (what you had so far)" if skipped else ""
             ratio = f" · 1:{answers['ratio']}" if answers.get("ratio") else ""
             from datetime import datetime
 
@@ -265,6 +307,25 @@ class Conversation:
                 f"⚠️ Couldn't reach the machine to save notes for shot #{pending.shot_id}. "
                 "They'll appear once it's back online — or re-enter them in the web UI."
             )
+        await self._next()
+
+    async def _next(self) -> None:
+        """Pop the next queued shot (if any) and start — or resume — its log."""
+        if not self.queue:
+            return
+        self.pending = self.queue.pop(0)
+        self._persist()
+        more = len(self.queue)
+        resumed = bool(self.pending.answers)
+        await self.messenger.send(
+            f"☕ Next up: shot #{self.pending.shot_id}\n{self.pending.headline}\n\n"
+            + ("Picking up where we left off:" if resumed else "Let's log it:")
+            + (f" ({more} more after this)" if more else "")
+        )
+        await self._prompt()
 
     def _persist(self) -> None:
-        self.state.set("pending", self.pending.to_dict() if self.pending else None)
+        self.state.update(
+            pending=self.pending.to_dict() if self.pending else None,
+            queue=[q.to_dict() for q in self.queue],
+        )

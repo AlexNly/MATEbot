@@ -26,7 +26,8 @@ HELP = (
     "/sleep — back to standby\n"
     "/status — mode, temperature, connectivity\n"
     "/last — the last logged shot\n"
-    "/fix — redo the questionnaire for the last shot\n"
+    "/fix [shot] — redo the questionnaire for the last shot (or e.g. /fix 62)\n"
+    "/skip — drop the questionnaire in progress, move on to the next queued shot\n"
     "/newbag <grams> [name] — start tracking a bean bag (optional feature)\n"
     "/bag — how much is left in the open bags\n"
     "/tossbag [name] — close out a bag (emptied, binned, or gifted)\n"
@@ -196,28 +197,50 @@ class CommandRouter:
         await self.messenger.send(text)
 
     async def _cmd_fix(self) -> None:
-        last = self.state.get("last_shot")
-        if not last:
+        shot = self.state.get("last_shot")
+        if self._args:
+            try:
+                sid = int(self._args[0].lstrip("#"))
+            except ValueError:
+                await self.messenger.send("Usage: /fix [shot id] — e.g. /fix 62")
+                return
+            if not shot or shot["shot_id"] != sid:
+                index = await self.client.fetch_index()
+                entry = next((e for e in index.entries if e.id == sid and not e.deleted), None)
+                if entry is None:
+                    await self.messenger.send(f"No shot #{sid} on the machine.")
+                    return
+                shot = {
+                    "shot_id": entry.id,
+                    "profile": entry.profile_name,
+                    "duration_ms": entry.duration_ms,
+                    "volume_g": entry.volume_g,
+                }
+        if not shot:
             await self.messenger.send("No shot to fix yet.")
             return
-        await self.messenger.send(f"✏️ Let's redo shot #{last['shot_id']}:")
+        await self.messenger.send(f"✏️ Let's redo shot #{shot['shot_id']}:")
         photo = None
         if getattr(self.config, "plots_enabled", False):
             try:
                 from .plot import render_shot_png
                 from .slog import parse_slog
 
-                parsed = parse_slog(await self.client.fetch_slog(last["shot_id"]))
+                parsed = parse_slog(await self.client.fetch_slog(shot["shot_id"]))
                 photo = render_shot_png(
-                    parsed, title=f"Shot #{last['shot_id']} — {parsed.profile_name}"
+                    parsed, title=f"Shot #{shot['shot_id']} — {parsed.profile_name}"
                 )
             except Exception as exc:  # noqa: BLE001 - photo is a nice-to-have
                 log.info("fix plot skipped: %s", exc)
         await self.convo.start_shot(
-            last["shot_id"], last.get("profile", ""),
-            last.get("duration_ms", 0), last.get("volume_g", 0.0),
-            photo=photo,
+            shot["shot_id"], shot.get("profile", ""),
+            shot.get("duration_ms", 0), shot.get("volume_g", 0.0),
+            photo=photo, now=True,
         )
+
+    async def _cmd_skip(self) -> None:
+        if not await self.convo.skip():
+            await self.messenger.send("Nothing to skip — no questionnaire in progress.")
 
     async def _cmd_newbag(self) -> None:
         from . import bags
