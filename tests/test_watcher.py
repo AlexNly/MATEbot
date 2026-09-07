@@ -110,3 +110,49 @@ async def test_resolution_falls_back_to_newest_when_nothing_matches():
     watcher.last_known_id = 70
     entry = await watcher._resolve_new_entry(duration_hint_ms=42600, budget_s=0.3, poll_s=0.1)
     assert entry is not None and entry.id == 71  # better late than never, logged loudly
+
+
+@pytest.mark.parametrize('ending', [{'a': 0, 's': 'brew', 'e': 30000}, None])
+async def test_split_status_detects_once(tmp_path, ending):
+    import json
+
+    frames = [
+        {'tp': 'evt:status', 'm': 1, 'p': 'Classic'},
+        {'tp': 'evt:status', 'process': {'a': 1, 's': 'brew', 'e': 30000}},
+        {'tp': 'evt:status', 'm': 0, 'p': 'Next selection'},
+        {'tp': 'res:profiles:list', 'rid': 'unrelated'},
+        {'tp': 'evt:status', 'process': ending},
+        {'tp': 'evt:status', 'process': ending},
+    ]
+    path = tmp_path / 'split.jsonl'
+    path.write_text('\n'.join(json.dumps(f) for f in frames))
+    watcher = ShotWatcher(FakeClient())
+    shots = [s async for s in watcher.shots(replay_frames(path))]
+    assert len(shots) == 1
+    assert shots[0].entry.id == 59
+    assert shots[0].profile_label == 'Classic'
+    assert shots[0].duration_ms == 30000
+
+
+@pytest.mark.parametrize('utility,duration,disconnect', [(True, 30000, False),
+                                                       (False, 5000, False),
+                                                       (False, 30000, True)])
+async def test_split_status_ignores_utility_short_and_disconnected_shots(
+    tmp_path, utility, duration, disconnect,
+):
+    import json
+
+    from matebot.status import DISCONNECTED
+
+    frames = [
+        {'tp': 'evt:status', 'm': 1, 'p': 'Ordinary name'},
+        {'tp': 'evt:status', 'process': {'a': 1, 's': 'brew', 'e': duration, 'u': utility}},
+    ]
+    if disconnect:
+        frames.extend([{'tp': DISCONNECTED}, {'tp': 'evt:status', 'm': 1}])
+    frames.append({'tp': 'evt:status', 'process': None})
+    path = tmp_path / 'split.jsonl'
+    path.write_text('\n'.join(json.dumps(f) for f in frames))
+    client = FakeClient()
+    assert [s async for s in ShotWatcher(client).shots(replay_frames(path))] == []
+    assert client.polls == 1  # startup only; never resolve a false shot

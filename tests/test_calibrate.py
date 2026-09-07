@@ -63,3 +63,7 @@ def test_calibrate_offset_end_to_end(monkeypatch, tmp_path):
 def test_calibrate_offset_missing_files(tmp_path):
     (tmp_path / "shots").mkdir()
     assert asyncio.run(calibrate.calibrate_offset(tmp_path, 4)) is None
+
+
+def test_pump_start_uses_recorded_time(make_slog):
+    assert calibrate.pump_start(make_slog()) == .375

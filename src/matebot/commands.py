@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Any
 
 from .machine import MachineError
+from .status import DISCONNECTED
 
 log = logging.getLogger(__name__)
 
@@ -432,6 +433,8 @@ def make_frame_cache():
     box: dict[str, Any] = {"frame": None, "ts": 0.0}
 
     def update(frame: dict) -> None:
+        if frame.get("tp") == DISCONNECTED:
+            box.update(frame=None, ts=0.0)
         if frame.get("tp") == "evt:status":
             box["frame"] = frame
             box["ts"] = time.monotonic()

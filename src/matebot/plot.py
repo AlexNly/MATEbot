@@ -71,12 +71,11 @@ def render_shot_chart(shot: Shot, *, title: str | None = None) -> tuple[bytes, d
         ax_g.set_ylim(bottom=0)
         ax_g.tick_params(axis="y", colors=COLORS["weight"], labelsize=8)
 
-    for phase in shot.phases:
-        px = phase.sample_index * shot.sample_interval_ms / 1000
+    for px, name in shot.phase_times_s:
         if 0.3 < px < (t[-1] if t else 0) - 0.3:
             ax_temp.axvline(px, color=COLORS["phase"], lw=1.0, alpha=0.8)
             ax_temp.annotate(
-                phase.name[:18], (px, 0.99), xycoords=("data", "axes fraction"),
+                name[:18], (px, 0.99), xycoords=("data", "axes fraction"),
                 rotation=90, va="top", ha="right", fontsize=6.5, color="white",
                 bbox={"boxstyle": "round,pad=0.25", "facecolor": "#162132",
                       "alpha": 0.75, "edgecolor": "none"},

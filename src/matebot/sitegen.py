@@ -34,7 +34,6 @@ def _round(values: list[float], digits: int) -> list[float]:
 
 def _shot_payload(shot: Shot, notes: dict | None) -> dict:
     s = shot.series
-    step = shot.sample_interval_ms / 1000.0
     return {
         "header": {
             "profile": shot.profile_name,
@@ -42,11 +41,11 @@ def _shot_payload(shot: Shot, notes: dict | None) -> dict:
             "duration_s": round(shot.duration_ms / 1000, 1),
             "final_g": shot.final_weight_g,
             "phases": [
-                {"t": round(p.sample_index * step, 2), "name": p.name} for p in shot.phases
+                {"t": round(t, 3), "name": name} for t, name in shot.phase_times_s
             ],
         },
         "series": {
-            "t": _round([t * step for t in s.get("t", [])], 2),
+            "t": _round(shot.times_s, 3),
             "ct": _round(s.get("ct", []), 1),
             "tt": _round(s.get("tt", []), 1),
             "cp": _round(s.get("cp", []), 2),

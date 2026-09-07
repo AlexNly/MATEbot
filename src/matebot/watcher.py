@@ -1,7 +1,7 @@
 """Shot-end detection over the GaggiMate status stream.
 
-A shot "ends" when ``process.a`` transitions 1 -> 0 while the machine was in
-brew mode. The finished shot's id is then resolved by polling ``index.bin``
+A shot "ends" when ``process.a`` transitions 1 -> 0 (or process becomes null)
+while the machine was in brew mode. The finished shot's id is then resolved by polling ``index.bin``
 (the header/index are finalized only after extended recording ends, which can
 take up to ~1 minute after the pump stops while a bluetooth scale settles).
 """
@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .machine import GaggiMateClient
 from .slog import IndexEntry
+from .status import DISCONNECTED, StatusAccumulator
 
 log = logging.getLogger(__name__)
 
@@ -55,7 +56,8 @@ class ShotWatcher:
         p_now = frame.get("process") or {}
         return (
             p_prev.get("a") == 1
-            and p_now.get("a") == 0
+            and "process" in frame
+            and (frame["process"] is None or p_now.get("a") == 0)
             and prev.get("m") == MODE_BREW
             and p_prev.get("s", "brew") in BREW_PROCESSES
         )
@@ -113,7 +115,7 @@ class ShotWatcher:
         return fallback
 
     async def shots(self, frames: AsyncIterator[dict]) -> AsyncIterator[FinishedShot]:
-        """Consume status frames, yield finished (accepted) shots."""
+        """Consume merged status snapshots, yield finished (accepted) shots."""
         prev: dict | None = None
         # Initialize last_known_id from the machine so pre-existing shots
         # never fire the questionnaire.
@@ -126,6 +128,9 @@ class ShotWatcher:
                 self.last_known_id = 0
 
         async for frame in frames:
+            if frame.get("tp") == DISCONNECTED:
+                prev = None
+                continue
             if frame.get("tp") != "evt:status":
                 continue
             if self._frame_is_shot_end(prev, frame):
@@ -139,7 +144,7 @@ class ShotWatcher:
                 )
                 if is_utility and self.on_utility:
                     await self.on_utility(profile)
-                if self._accept(profile, duration):
+                if self._accept(profile, duration) and not (prev.get("process") or {}).get("u"):
                     entry = await self._resolve_new_entry(duration_hint_ms=int(duration))
                     if entry is None:
                         log.warning("shot ended but no new index entry appeared")
@@ -150,15 +155,21 @@ class ShotWatcher:
                         )
                         self.last_known_id = entry.id
                         yield FinishedShot(entry, profile, entry.duration_ms or duration)
+            if (frame.get("process") or {}).get("a") == 1 and prev is not None:
+                if (prev.get("process") or {}).get("a") == 1 and prev.get("m") is not None:
+                    # A new selection/mode is slow state, not the identity of
+                    # the brew already in progress. Preserve its original context.
+                    frame = {**frame, "m": prev.get("m"), "p": prev.get("p", "")}
             prev = frame
 
 
 async def replay_frames(path: str | Path, *, delay_s: float = 0.0) -> AsyncIterator[dict]:
     """Replay a JSONL capture of WS frames (for tests and --replay dry-runs)."""
+    status = StatusAccumulator()
     for line in Path(path).read_text().splitlines():
         line = line.strip()
         if not line:
             continue
         if delay_s:
             await asyncio.sleep(delay_s)
-        yield json.loads(line)
+        yield status.apply(json.loads(line))

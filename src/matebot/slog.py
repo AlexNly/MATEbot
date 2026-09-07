@@ -1,7 +1,7 @@
 """Decoder for GaggiMate binary shot logs (``.slog``) and the shot index (``index.bin``).
 
 Format reference: ``src/display/models/shot_log_format.h`` in the GaggiMate
-firmware (format v5, little-endian throughout). Older versions carry fewer
+firmware (formats v5-v7, little-endian throughout). Older versions carry fewer
 sample fields; ``fieldsMask`` says which are present, always in the fixed
 order below.
 """
@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 SHOT_MAGIC = 0x544F4853  # "SHOT"
 INDEX_MAGIC = 0x58444953  # "SIDX"
 
-# (key, struct char, divisor) in fieldsMask bit order 0..12.
+# (key, struct char, divisor) in fieldsMask bit order. t widens to I in v6.
 SAMPLE_FIELDS = [
     ("t", "H", None),  # sample tick; seconds = t * sampleInterval / 1000
     ("tt", "H", 10),  # target temp °C
@@ -32,6 +32,7 @@ SAMPLE_FIELDS = [
     ("ev", "H", 10),  # estimated weight g
     ("pr", "H", 100),  # puck resistance
     ("si", "H", None),  # system info bitfield
+    ("wp", "H", 10),  # cumulative water pumped ml (v7+)
 ]
 
 # ShotIndexEntry.flags
@@ -72,8 +73,15 @@ class Shot:
 
     @property
     def times_s(self) -> list[float]:
-        step = self.sample_interval_ms / 1000.0
+        step = 0.001 if self.version >= 6 else self.sample_interval_ms / 1000.0
         return [t * step for t in self.series.get("t", [])]
+
+    @property
+    def phase_times_s(self) -> list[tuple[float, str]]:
+        """Phase positions from recorded samples; omit unrecovered transitions."""
+        times = self.times_s
+        return [(times[p.sample_index], p.name) for p in self.phases
+                if 0 <= p.sample_index < len(times)]
 
     def to_dict(self) -> dict:
         return {
@@ -100,9 +108,8 @@ class Shot:
         out = io.StringIO()
         w = csv.writer(out)
         w.writerow(["time_s", *keys])
-        step = self.sample_interval_ms / 1000.0
-        for i in range(len(self.series.get("t", []))):
-            w.writerow([self.series["t"][i] * step, *(self.series[k][i] for k in keys)])
+        for i, time_s in enumerate(self.times_s):
+            w.writerow([time_s, *(self.series[k][i] for k in keys)])
         return out.getvalue()
 
 
@@ -147,12 +154,15 @@ def parse_slog(data: bytes) -> Shot:
     Tolerates truncated sample sections (crash during recording): decodes as
     many complete samples as are actually present.
     """
-    if len(data) < 24 or struct.unpack_from("<I", data, 0)[0] != SHOT_MAGIC:
+    if len(data) < 28 or struct.unpack_from("<I", data, 0)[0] != SHOT_MAGIC:
         raise SlogError("not a shot log (missing SHOT magic)")
 
-    version, _sample_size, header_size, interval, _res1 = struct.unpack_from("<BBHHH", data, 4)
+    version, sample_size, header_size, interval, _res1 = struct.unpack_from("<BBHHH", data, 4)
     fields_mask, sample_count, duration_ms, start_epoch = struct.unpack_from("<IIII", data, 12)
-    if header_size < 108 or header_size > len(data):
+    if not 1 <= version <= 7:
+        raise SlogError(f"unsupported shot log version {version}")
+    minimum_header = 512 if version >= 5 else 128
+    if header_size < minimum_header or header_size > len(data):
         raise SlogError(f"implausible headerSize {header_size}")
     profile_id = _cstr(data[28:60])
     profile_name = _cstr(data[60:108])
@@ -166,9 +176,18 @@ def parse_slog(data: bytes) -> Shot:
             idx, num = struct.unpack_from("<HB", data, off)
             phases.append(PhaseTransition(idx, num, _cstr(data[off + 4 : off + 29])))
 
-    present = [(k, c, d) for bit, (k, c, d) in enumerate(SAMPLE_FIELDS) if fields_mask & (1 << bit)]
+    known_mask = 0x3FFF if version >= 7 else 0x1FFF
+    if not fields_mask & 1 or fields_mask & ~known_mask:
+        raise SlogError(f"unsupported fieldsMask {fields_mask:#x} for version {version}")
+    present = [
+        (k, "I" if k == "t" and version >= 6 else c, d)
+        for bit, (k, c, d) in enumerate(SAMPLE_FIELDS) if fields_mask & (1 << bit)
+    ]
     fmt = "<" + "".join(c for _, c, _ in present)
     size = struct.calcsize(fmt)
+    # Older headers left this byte reserved (zero). Never guess a nonzero stride.
+    if sample_size not in (0, size):
+        raise SlogError(f"sampleSize {sample_size} does not match layout size {size}")
     body = data[header_size:]
     n_available = len(body) // size if size else 0
     n = min(sample_count, n_available) if sample_count else n_available
