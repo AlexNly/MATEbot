@@ -89,6 +89,13 @@ firmware older than v1.7 (no binary shot logs — unsupported).
 - New-shot ids come from polling `/api/history/index.bin` (`flags & 1`,
   `id > last_known`) — never from `req:history:list` (heavy on the ESP32)
   and never from timestamps (`startEpoch` is wrong without NTP).
+- Newer firmware splits `evt:status` into slow state and fast telemetry. Merge
+  top-level keys, retain omitted fields, clear explicit nulls, and reset at
+  disconnects. Both live traffic and replay must use the same accumulator.
+- `.slog` v5 uses 16-bit sample-counter time and 26-byte records; v6 uses
+  32-bit elapsed milliseconds and 28-byte records; v7 adds `wp` (water pumped
+  times 10) and uses 30-byte records. Use `Shot.times_s` and `phase_times_s`
+  for all time conversions; validate declared record size and field masks.
 - Shot files are finalized up to ~1 min after the pump stops (bluetooth
   scale settle time).
 

@@ -90,8 +90,9 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
     from .machine import GaggiMateClient
     from .messengers.base import TextReply
     from .state import State
+    from .status import DISCONNECTED
     from .sync import sync_soon
-    from .watcher import ShotWatcher, replay_frames
+    from .watcher import BREW_PROCESSES, ShotWatcher, replay_frames
 
     log = logging.getLogger("matebot")
     state = State(pathlib.Path(config.state_dir) / "state.json")
@@ -265,21 +266,39 @@ async def _run(config: Config, *, replay: str | None, dry_run: bool) -> int:
                 async def tee(source):
                     nonlocal last_frame_at, shot_active
                     async for frame in source:
+                        if frame.get("tp") == DISCONNECTED:
+                            cache_frame(frame)
+                            last_frame_at = 0.0
+                            if camera is not None and shot_active:
+                                asyncio.create_task(camera.shot_ended())
+                            shot_active = False
+                            yield frame
+                            continue
                         now = _time.monotonic()
                         gap = now - last_frame_at if last_frame_at else None
-                        last_frame_at = now
+                        if frame.get("tp") == "evt:status":
+                            last_frame_at = now
                         if camera is not None and frame.get("tp") == "evt:status":
-                            active = (
-                                frame.get("m") == 1
-                                and (frame.get("process") or {}).get("a") == 1
-                                and not _re.search(config.ignore_profiles, frame.get("p") or "")
+                            process = frame.get("process") or {}
+                            # Once recording, slow-state mode/profile changes do
+                            # not end the brew; its process lifecycle does.
+                            active = process.get("a") == 1 and (
+                                shot_active or (
+                                    frame.get("m") == 1
+                                    and process.get("s", "brew") in BREW_PROCESSES
+                                    and not process.get("u")
+                                    and not (
+                                        config.ignore_profiles
+                                        and _re.search(config.ignore_profiles, frame.get("p") or "")
+                                    )
+                                )
                             )
                             if active and not shot_active:
                                 await camera.shot_started()
                             elif shot_active and not active:
                                 asyncio.create_task(camera.shot_ended())
                             shot_active = active
-                        if gap is None or gap > 60:
+                        if frame.get("tp") == "evt:status" and (gap is None or gap > 60):
                             await router.on_machine_online(frame)
                             if state.get("sync_pending"):
                                 log.info("machine is back; retrying pending journal sync")

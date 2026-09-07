@@ -416,3 +416,26 @@ async def test_fix_by_shot_id(setup):
     assert "No shot #61" in fm.sent[-1] and len(convo.started) == 3
     assert await router.handle("/fix abc")
     assert "Usage" in fm.sent[-1]
+
+
+async def test_partial_frames_status_ready_and_disconnect(setup):
+    from matebot.status import DISCONNECTED, StatusAccumulator
+
+    router, client, state, convo, fm, cache = setup
+    acc = StatusAccumulator()
+    router._awaiting_ready = True
+    for patch in [
+        {'tp': 'evt:status', 'm': 1, 'p': 'Classic'},
+        {'tp': 'evt:status', 'ct': 80, 'tt': 93, 'wl': 60},
+        {'tp': 'evt:status', 'ct': 92.5, 'tt': 93, 'wl': 60},
+        {'tp': 'evt:status', 'p': 'Classic'},
+    ]:
+        frame = acc.apply(patch)
+        cache(frame)
+        await router.on_frame(frame)
+    assert sum('ready' in text for text in fm.sent) == 1
+    await router.handle('/status')
+    assert 'brew mode' in fm.sent[-1] and '92.5' in fm.sent[-1]
+    cache(acc.apply({'tp': DISCONNECTED}))
+    await router.handle('/status')
+    assert 'offline' in fm.sent[-1]

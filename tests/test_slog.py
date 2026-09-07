@@ -78,3 +78,63 @@ def test_index_parse_synthetic():
     assert idx.entries[0].volume_g == pytest.approx(36.1)
     assert idx.entries[0].padded_id == "000005"
     assert idx.entries[1].profile_name == "Classic"
+
+
+@pytest.mark.parametrize('version', [5, 6, 7])
+def test_versioned_samples(make_slog, version):
+    times = (0, 1, 280) if version == 5 else (0, 375, 70000)
+    shot = parse_slog(make_slog(version, times))
+    assert shot.times_s == ([0, .25, 70] if version == 5 else [0, .375, 70])
+    assert shot.series['ct'] == [92, 92, 92]
+    assert shot.series['cp'] == [8.5, 8.5, 8.5]
+    assert shot.series['vf'] == [-.1, -.1, -.1]
+    assert shot.series.get('wp') == ([12.3, 12.4, 12.5] if version == 7 else None)
+    assert shot.phase_times_s == [(.25 if version == 5 else .375, 'Brew')]
+    assert float(shot.to_csv().splitlines()[2].split(',')[0]) == shot.times_s[1]
+    assert ('wp' in shot.to_dict()['series']) == (version == 7)
+
+
+@pytest.mark.parametrize('version', [5, 6, 7])
+def test_unset_record_size_and_truncation(make_slog, version):
+    times = (0, 1, 2) if version == 5 else (0, 375, 70000)
+    blob = make_slog(version, times, declared_size=0)
+    shot = parse_slog(blob[:-1])
+    assert shot.sample_count == 2
+    assert shot.series['ct'] == [92, 92]
+    # A phase pointing beyond the recovered data is omitted.
+    header = bytearray(blob[:512])
+    struct.pack_into('<H', header, 110, 2)
+    assert parse_slog(bytes(header) + blob[512:-1]).phase_times_s == []
+
+
+@pytest.mark.parametrize('change', ['version', 'size', 'mask', 'no_time', 'short_header'])
+def test_reject_unsupported_layout(make_slog, change):
+    data = bytearray(make_slog())
+    if change == 'version':
+        data[4] = 8
+    elif change == 'size':
+        data[5] = 26
+    elif change == 'mask':
+        struct.pack_into('<I', data, 12, 0x7FFF)
+    elif change == 'no_time':
+        struct.pack_into('<I', data, 12, 0x3FFE)
+    else:
+        data = data[:25]
+    with pytest.raises(SlogError):
+        parse_slog(bytes(data))
+
+
+@pytest.mark.parametrize('version', [5, 6, 7])
+def test_sparse_field_mask_controls_offsets(make_slog, version):
+    data = bytearray(make_slog(version, (0, 1, 2))[:512])
+    # Timestamp, current temperature, and (in v7) cumulative pumped water.
+    mask = 0x5 | (0x2000 if version == 7 else 0)
+    fmt = ('<HH' if version == 5 else '<IH') + ('H' if version == 7 else '')
+    data[5] = struct.calcsize(fmt)
+    struct.pack_into('<II', data, 12, mask, 2)
+    body = b''.join(struct.pack(fmt, t, 920, *([125] if version == 7 else []))
+                    for t in (0, 1 if version == 5 else 70000))
+    shot = parse_slog(bytes(data) + body)
+    assert shot.series['ct'] == [92, 92]
+    assert shot.times_s == ([0, .25] if version == 5 else [0, 70])
+    assert 'cp' not in shot.series

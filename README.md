@@ -214,8 +214,37 @@ your own git remote. Requires GaggiMate firmware ≥ v1.7 (binary shot logs).
 - `GET /api/settings` — settings backup; WiFi/AP/Home-Assistant credentials
   are redacted before anything is written to disk
 
-The `.slog` v5 binary format (512-byte header, 26-byte samples at 250 ms) is
-documented in [`src/matebot/slog.py`](src/matebot/slog.py).
+The `.slog` decoder supports v5 (26-byte samples with sample-counter time),
+v6 (28-byte samples with actual elapsed milliseconds), and v7 (30-byte
+samples including cumulative pumped water). Charts, phase markers and video
+calibration use recorded timestamps for v6/v7; 250 ms is only the nominal
+sampling interval. See [`src/matebot/slog.py`](src/matebot/slog.py).
+
+Both full and partial `evt:status` messages are supported. MATEbot merges
+slow state (mode/profile) with fast telemetry (temperature/process), clears
+explicit null values, and resets its snapshot after a disconnection. A brew
+that finishes entirely while disconnected may need `/fix <id>` to log its
+notes; MATEbot does not infer a shot end across different connections.
+
+### Recovering graphs after a firmware update
+
+If an older MATEbot version produced scrambled graphs from v6/v7 logs, the
+archived `.slog` files remain raw machine data. After updating MATEbot, rebuild
+the journal from the data repository (preserve your existing title):
+
+```bash
+matebot sitegen /path/to/journal/shots -o /path/to/journal/docs --title "My Shot Journal"
+```
+
+This regenerates the local site and its summaries without changing shot notes
+or publishing anything. Review and commit the generated changes in your data
+repository, or let the next configured sync regenerate and publish them.
+
+Existing video offsets are preserved. An offset calibrated with the old
+decoder may need adjustment with `/vsync` after visually checking the corrected
+chart; this command also re-renders the reel. MATEbot does not automatically
+overwrite manual video alignment. Unsupported binary layouts are rejected
+rather than plotted with guessed values.
 
 ### WhatsApp?
 

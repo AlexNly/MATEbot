@@ -31,6 +31,7 @@ from typing import Any
 import aiohttp
 
 from .slog import ShotIndex, is_slog, parse_index
+from .status import DISCONNECTED, StatusAccumulator
 
 log = logging.getLogger(__name__)
 
@@ -77,15 +78,18 @@ class GaggiMateClient:
     async def status_stream(
         self, *, liveness_timeout: float = 15.0, max_backoff: float = 60.0
     ) -> AsyncIterator[dict]:
-        """Yield every WS message as a dict, reconnecting forever.
+        """Yield merged status snapshots and other WS messages, reconnecting forever.
 
         Also resolves rid-correlated ``request()`` futures as responses come in.
+        Emits a local DISCONNECTED boundary when the socket drops; state never
+        carries across connections. Missing status keys retain their last value.
         """
         backoff = 1.0
         while True:
             try:
                 async with self.session.ws_connect(self.ws_url, heartbeat=None) as ws:
                     self._ws = ws
+                    status = StatusAccumulator()
                     log.info("connected to %s", self.ws_url)
                     backoff = 1.0
                     while True:
@@ -96,10 +100,12 @@ class GaggiMateClient:
                             data = json.loads(msg.data)
                         except json.JSONDecodeError:
                             continue
+                        if not isinstance(data, dict):
+                            continue
                         rid = data.get("rid")
                         if rid and rid in self._pending:
                             self._pending.pop(rid).set_result(data)
-                        yield data
+                        yield status.apply(data)
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 - deliberate: never crash-loop
@@ -110,6 +116,7 @@ class GaggiMateClient:
                     if not fut.done():
                         fut.set_exception(MachineError("websocket dropped"))
                 self._pending.clear()
+            yield {"tp": DISCONNECTED}
             try:
                 # a nudge (e.g. /wake just powered the plug) retries immediately
                 await asyncio.wait_for(

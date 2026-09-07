@@ -63,11 +63,11 @@ async def audio_onset(clip: Path) -> float | None:
 def pump_start(slog_bytes: bytes) -> float | None:
     """Time (s) at which the shot data first commands the pump."""
     shot = parse_slog(slog_bytes)
-    step = shot.sample_interval_ms / 1000
+    times = shot.times_s
     for key, thresh in (("tp", 0.1), ("fl", 0.3)):
         for i, v in enumerate(shot.series.get(key, [])):
             if v > thresh:
-                return round(i * step, 2)
+                return times[i]
     return None
 
 
